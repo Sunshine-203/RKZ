@@ -208,7 +208,7 @@
     $('phaseLabel').textContent = mode === 'custom' ? '⏱ Custom timer' : timer.phase === 'break' ? `☕ Break · ${session.breakMinutes} min` : `⏱ Focus · Session ${timer.round}`;
     $('phaseLabel').classList.toggle('break', timer.phase === 'break');
     document.querySelectorAll('[data-mode]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.mode === mode)));
-    $('resetBtn').disabled = !f || timer.status === 'idle';
+    $('resetBtn').disabled = !c || timer.status === 'idle';
     const today = R().state.today;
     const n = R().state.sessions.filter((x) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kuwait' }).format(new Date(x.createdAt)) === today).length;
     $('sessionsToday').textContent = `${n} session${n === 1 ? '' : 's'} logged today${timer.round > 1 ? ` · ${timer.round - 1} pomodoro${timer.round > 2 ? 's' : ''} done` : ''}`;
@@ -218,10 +218,10 @@
     mb.disabled = !c || silent;
     mb.textContent = silent ? '🔇 Silent' : session.soundOn ? '🔈 Mute' : '🔊 Unmute';
     mb.setAttribute('aria-pressed', String(!session.soundOn));
-    $('startBtn').disabled = !f;
+    $('startBtn').disabled = !c;
     $('startBtn').textContent = timer.status === 'running' ? '❚❚ Pause' : timer.status === 'paused' ? '▷ Resume' : timer.phase === 'break' ? '▷ Start break' : '▷ Start';
     document.querySelectorAll('[data-outcome]').forEach((b) => { b.disabled = !f; });
-    $('timerState').textContent = { idle: f ? (timer.phase === 'break' ? 'Break time. Stretch, drink water.' : 'Ready') : 'Pick a task to start', running: timer.phase === 'break' ? 'On break…' : 'Focusing…', paused: 'Paused', finished: 'Time’s up!' }[timer.status];
+    $('timerState').textContent = { idle: timer.phase === 'break' ? 'Break time. Stretch, drink water.' : f ? 'Ready' : (c ? 'Ready · link a task to log the outcome' : 'Create a channel to start'), running: timer.phase === 'break' ? 'On break…' : 'Focusing…', paused: 'Paused', finished: 'Time’s up!' }[timer.status];
     drawTime();
   }
   function drawTime() {
