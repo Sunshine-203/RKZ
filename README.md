@@ -5,9 +5,9 @@
 RKZ is an AI-assisted study web app for university students in Kuwait. It turns assignments and available study time into a realistic plan, gives each subject its own focus space, and helps students recover when a session doesn't go as planned.
 
 ## Features
-1. **Study Planner + AI Study Steps** ✅ live
-2. **Focus Room with Editable Subject Channels** (in progress)
-3. **Progress Review + AI Recovery** (in progress)
+1. **Study Planner + AI Study Steps**: AI turns an assignment description into editable, timed steps; RKZ schedules them into your daily study time and flags work that won't fit.
+2. **Focus Room with Editable Subject Channels**: each subject (Math, Biology…) saves its own background, sound and focus length; timer with start/pause/resume/end; outcome saved as complete, partial or missed.
+3. **Progress Review + AI Recovery**: AI reads your session note and the unfinished work, suggests concrete recovery steps; RKZ keeps finished work, reschedules the rest, flags what won't fit, and saves a before/after revision.
 
 ## Tech
 | Part | Choice |
@@ -17,8 +17,10 @@ RKZ is an AI-assisted study web app for university students in Kuwait. It turns 
 | Database | PostgreSQL (plans persist after refresh) |
 | AI | OpenRouter → Google Gemini Flash, called **only from the server** |
 | Hosting | Render (Blueprint in `render.yaml`) |
+| Media | Scene photos provided by the team; ambient sounds generated live with the Web Audio API (100% original); Manrope font (OFL) |
 
 ## How the AI works
+- `POST /api/ai/recovery`: the server sends the session note, the unfinished step and the deadline to the model and gets 1–3 recovery steps, a short message and a tip; output is validated and capped to the real remaining time.
 - `POST /api/ai/suggest-steps`: the server sends the assignment name, subject, description and deadline to OpenRouter and asks for JSON steps.
 - The server **validates** the AI output (titles cleaned, minutes rounded and clamped to 5–480) before the browser sees it.
 - The student edits or accepts the steps, then RKZ's **own scheduler** (`src/scheduler.js`) places them into the available time. If AI is down, students add steps manually and planning still works.

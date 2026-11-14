@@ -69,6 +69,20 @@ create table if not exists sessions (
   created_at timestamptz not null default now()
 );
 create index if not exists sessions_user on sessions (user_id, created_at desc);
+
+create table if not exists revisions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references users(id) on delete cascade,
+  session_id uuid references sessions(id) on delete set null,
+  assignment_id uuid references assignments(id) on delete cascade,
+  source text not null default 'manual',
+  ai_message text not null default '',
+  ai_tip text not null default '',
+  before jsonb not null,
+  after jsonb not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists revisions_user on revisions (user_id, created_at desc);
 `;
 
 async function migrate() {

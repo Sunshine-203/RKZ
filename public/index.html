@@ -14,7 +14,7 @@
 <div class="app">
   <aside class="sidebar">
     <div class="side-brand">
-      <img src="/logo.png" alt="" width="34" height="34">
+      <span class="logo-mark" aria-hidden="true"></span>
       <span>RKZ <span class="ar" lang="ar" dir="rtl">ركز</span></span>
     </div>
     <nav class="side-nav" aria-label="Sections">
@@ -24,6 +24,8 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M8 14h2M14 14h2M8 17h2"/></svg><span>Study Planner</span></button>
       <button class="tab" type="button" data-tab="focus">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9 2h6"/></svg><span>Focus Room</span></button>
+      <button class="tab" type="button" data-tab="review">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></svg><span>Progress Review</span></button>
       <button id="themeBtn" class="tab theme-toggle" type="button">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></svg><span id="themeLabel">Dark mode</span></button>
     </nav>
@@ -32,7 +34,7 @@
 
   <div class="main">
   <header class="main-top">
-    <h1 id="pageTitle">Dashboard</h1>
+    <div><h1 id="pageTitle">Dashboard</h1><div id="pageSub" class="page-sub" hidden></div></div>
     <button id="openPlannerBtn" class="btn mist small" type="button">Open Study Planner</button>
   </header>
 
@@ -124,62 +126,72 @@
     </section>
 
     <section id="focus" class="view" hidden>
+      <div class="channel-bar">
+        <div id="channelTabs" class="channel-tabs" role="tablist" aria-label="Subject channels"></div>
+        <button id="focusSampleBtn" class="btn ghost small" type="button">Load sample</button>
+      </div>
+      <form id="newChannelForm" class="new-channel" hidden novalidate>
+        <input id="newChannelName" type="text" maxlength="40" placeholder="Channel name, e.g. Physics" aria-label="New channel name">
+        <button class="btn primary small" type="submit">Add channel</button>
+        <button id="newChannelCancel" class="btn ghost small" type="button">Cancel</button>
+      </form>
+      <p id="channelMsg" class="msg" role="status" aria-live="polite"></p>
+
       <div class="focus-grid">
-        <div class="focus-side">
-          <div class="card">
-            <div class="card-head">
-              <h2>Subject channels</h2>
-              <button id="focusSampleBtn" class="btn ghost small" type="button">Load sample</button>
-            </div>
-            <p class="hint">Each subject keeps its own background, sound and focus length.</p>
-            <div id="channelList" class="channel-list"></div>
-            <form id="newChannelForm" class="new-channel" novalidate>
-              <input id="newChannelName" type="text" maxlength="40" placeholder="New channel, e.g. Physics" aria-label="New channel name">
-              <button class="btn secondary small" type="submit">+ Add</button>
-            </form>
-            <p id="channelMsg" class="msg" role="status" aria-live="polite"></p>
-          </div>
-          <div class="card">
-            <h2>Tasks to focus on</h2>
-            <div id="taskList"></div>
-          </div>
-        </div>
-
         <div id="room" class="room" data-scene="plain" aria-label="Focus room">
-          <div class="scene-layer" aria-hidden="true"><img class="plain-logo" src="/logo.png" alt=""></div>
+          <div class="scene-layer" aria-hidden="true"><span class="plain-logo"></span></div>
+          <button id="fullBtn" class="room-icon" type="button" title="Full screen" aria-label="Full screen">⛶</button>
           <div class="room-inner">
-            <div class="room-top">
-              <div>
-                <span id="roomChannel" class="room-chip">No task open</span>
-                <div id="roomTask" class="room-task">Open a task to load its subject’s setup.</div>
-              </div>
-              <button id="fullBtn" class="room-icon" type="button" title="Full screen" aria-label="Full screen">⛶</button>
-            </div>
-
+            <div id="roomLabel" class="room-label">No channel yet</div>
+            <div id="roomTask" class="room-task">Tap “Load sample” or “+ New Channel” to start.</div>
+            <label id="taskPickWrap" class="task-pick" hidden>Task
+              <select id="taskPick" aria-label="Task for this session"></select>
+            </label>
             <div id="timer" class="timer" role="timer" aria-live="off">25:00</div>
             <div id="timerState" class="timer-state">Ready</div>
-
             <div class="room-controls">
-              <button id="startBtn" class="room-btn main" type="button" disabled>▶ Start</button>
-              <button id="endBtn" class="room-btn" type="button" disabled>■ End</button>
-              <button id="muteBtn" class="room-btn" type="button" aria-pressed="false" disabled>🔊 Sound on</button>
+              <button id="startBtn" class="room-btn main" type="button" disabled>▷ Start session</button>
+              <button id="muteBtn" class="room-btn" type="button" aria-pressed="false" disabled>🔈 Mute</button>
             </div>
-
-            <div class="room-settings">
-              <div class="scene-picker" role="radiogroup" aria-label="Background">
-                <button type="button" data-scene="fireplace" role="radio">🔥 Fireplace</button>
-                <button type="button" data-scene="ocean" role="radio">🌊 Ocean</button>
-                <button type="button" data-scene="rain" role="radio">🌧 Rain</button>
-                <button type="button" data-scene="plain" role="radio">◻ Plain</button>
+            <div class="outcome-row">
+              <span>Session outcome</span>
+              <div>
+                <button class="room-btn small" type="button" data-outcome="complete" disabled>Complete</button>
+                <button class="room-btn small" type="button" data-outcome="partial" disabled>Partial</button>
+                <button class="room-btn small" type="button" data-outcome="missed" disabled>Missed</button>
               </div>
-              <div class="room-row">
-                <label>Focus <input id="roomMinutes" type="number" min="5" max="180" step="5" inputmode="numeric"> min</label>
-                <button id="saveDefaultsBtn" class="room-btn small" type="button" disabled>Save as channel default</button>
-              </div>
-              <p id="roomNote" class="room-note">Changes apply to this session only, unless you save them as the channel’s default.</p>
             </div>
+            <p id="roomNote" class="room-note"></p>
           </div>
         </div>
+
+        <div class="card edit-panel" id="editPanel">
+          <h2 id="editTitle">Edit channel</h2>
+          <div id="editEmpty" class="empty">Pick or create a subject channel.</div>
+          <div id="editBody" hidden>
+            <label class="field">Name <input id="editName" type="text" maxlength="40"></label>
+            <div class="field-label">Background</div>
+            <div class="chip-picker" id="scenePicker" role="radiogroup" aria-label="Background">
+              <button type="button" data-scene="rain" role="radio">Rain</button>
+              <button type="button" data-scene="ocean" role="radio">Ocean</button>
+              <button type="button" data-scene="fireplace" role="radio">Fireplace</button>
+              <button type="button" data-scene="plain" role="radio">Plain</button>
+            </div>
+            <button id="editSound" class="chip-btn" type="button" aria-pressed="true">Sound: on</button>
+            <label class="chip-btn duration">Focus duration:
+              <input id="editMinutes" type="number" min="5" max="180" step="5" inputmode="numeric"> min</label>
+            <div class="edit-actions">
+              <button id="useSessionBtn" class="chip-btn" type="button">Use for this session</button>
+              <button id="saveDefaultsBtn" class="btn mist" type="button">Save as channel default</button>
+            </div>
+            <p id="editMsg" class="msg" role="status" aria-live="polite"></p>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2 id="taskListTitle">Tasks</h2>
+        <div id="taskList" class="task-list"></div>
       </div>
 
       <div id="outcomeModal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="outcomeTitle">
@@ -194,7 +206,7 @@
           <label class="field" id="doneWrap">Minutes done
             <input id="doneMinutes" type="number" min="1" max="600" inputmode="numeric">
           </label>
-          <label class="field">What got in the way? <span class="muted">(optional)</span>
+          <label class="field">What got in the way? <span class="muted">(optional, helps the AI recovery)</span>
             <textarea id="outcomeNote" rows="2" maxlength="500" placeholder="e.g. Got distracted by my phone, only finished half the reading."></textarea>
           </label>
           <div class="actions">
@@ -205,6 +217,61 @@
         </form>
       </div>
     </section>
+
+    <section id="review" class="view" hidden>
+      <div class="review-grid">
+        <div class="card">
+          <div class="card-head">
+            <h2>Sessions to review</h2>
+            <button id="reviewSampleBtn" class="btn ghost small" type="button">Load sample</button>
+          </div>
+          <p class="hint">Partial or missed focus sessions. Pick one to rebuild your plan around what really happened.</p>
+          <div id="reviewList" class="item-list review-list"></div>
+          <p id="reviewMsg" class="msg" role="status" aria-live="polite"></p>
+        </div>
+
+        <div class="card" id="recoveryCard">
+          <h2>Recovery plan</h2>
+          <div id="recoveryEmpty" class="empty">Pick a session on the left. RKZ keeps what you finished and moves the rest into your remaining time.</div>
+          <div id="recoveryBody" hidden>
+            <div class="rec-head">
+              <div><b id="recStep"></b><span id="recMeta" class="muted"></span></div>
+              <span id="recOutcome" class="st"></span>
+            </div>
+            <label class="field">What got in the way?
+              <textarea id="recNote" rows="2" maxlength="500" placeholder="e.g. I got sick and only finished half the reading."></textarea>
+            </label>
+            <div class="ai-row">
+              <button id="recAiBtn" class="btn ai" type="button">✨ Suggest Recovery Plan</button>
+              <button id="recManualBtn" class="btn ghost small" type="button">Replan without AI</button>
+              <span class="hint">AI reads your note and the unfinished work, then suggests concrete next steps.</span>
+            </div>
+            <div id="recSuggestion" hidden>
+              <blockquote id="recMessage" class="ai-quote"></blockquote>
+              <p id="recTip" class="tip"></p>
+              <h3>Recovery steps <span id="recTotal" class="muted"></span></h3>
+              <ol id="recSteps" class="steps-editor"></ol>
+              <div class="actions">
+                <button id="recApplyBtn" class="btn primary" type="button">Accept &amp; Replan</button>
+              </div>
+            </div>
+            <p id="recMsg" class="msg" role="status" aria-live="polite"></p>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" id="compareCard" hidden>
+        <div class="card-head">
+          <h2>Before → After</h2>
+          <span id="compareWhen" class="muted"></span>
+        </div>
+        <p id="compareSummary" class="compare-summary"></p>
+        <div class="compare">
+          <div class="col before"><h3>Before</h3><div id="compareBefore"></div></div>
+          <div class="col after"><h3>After</h3><div id="compareAfter"></div></div>
+        </div>
+      </div>
+    </section>
   </main>
 
   <footer class="foot">RKZ ركز · When plans break, focus starts here.</footer>
@@ -213,5 +280,6 @@
   <script src="/app.js"></script>
   <script src="/sound.js"></script>
   <script src="/focus.js"></script>
+  <script src="/review.js"></script>
 </body>
 </html>

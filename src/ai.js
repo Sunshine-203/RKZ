@@ -109,4 +109,50 @@ async function suggestSteps({ title, subject, description, deadline, today, dail
   return { steps: cleanSteps(json), model };
 }
 
-module.exports = { suggestSteps, chat, extractJson, cleanSteps, AIError, _setFetch };
+// ---------- AI action 2: Suggest Recovery Plan ----------
+function cleanRecovery(raw, remaining) {
+  const list = Array.isArray(raw?.steps) ? raw.steps : [];
+  const steps = [];
+  for (const s of list.slice(0, 3)) {
+    if (!s || typeof s.title !== 'string') continue;
+    const title = s.title.replace(/\s+/g, ' ').trim().slice(0, 120);
+    let minutes = Number(s.minutes);
+    if (!title || !Number.isFinite(minutes)) continue;
+    minutes = Math.min(240, Math.max(5, Math.round(minutes / 5) * 5));
+    steps.push({ title, minutes, source: 'ai' });
+  }
+  if (!steps.length) throw new AIError('AI could not build a recovery plan. Try again, or tap “Replan without AI”.');
+  // keep the plan honest: total close to the work actually left
+  const cap = Math.max(remaining + 30, Math.round(remaining * 1.5));
+  let total = steps.reduce((t, s) => t + s.minutes, 0);
+  while (total > cap && steps.some((s) => s.minutes > 5)) {
+    const big = steps.reduce((a, b) => (b.minutes > a.minutes ? b : a));
+    big.minutes -= 5; total -= 5;
+  }
+  const message = typeof raw.message === 'string' ? raw.message.trim().slice(0, 300) : '';
+  const tip = typeof raw.tip === 'string' ? raw.tip.trim().slice(0, 200) : '';
+  return { steps, message, tip };
+}
+
+async function suggestRecovery(ctx) {
+  const system = [
+    'You are RKZ, a kind and practical study coach for university students in Kuwait.',
+    'A study session did not go as planned. Read the student\'s note and the unfinished work, then build a concrete recovery.',
+    'Give 1 to 3 small, specific next steps that together cover the remaining work (total minutes close to the remaining minutes; add at most a short restart step).',
+    'Directly address the obstacle in the note (for example: phone distraction -> shorter blocks with the phone away; illness -> a lighter first step; confusion -> a targeted review step).',
+    'Reply with JSON only, exactly: {"message":"1-2 warm, specific sentences to the student (max 220 characters)","steps":[{"title":"action-first title, max 80 characters","minutes":20}],"tip":"one concrete tip for this obstacle (max 140 characters)"}',
+  ].join(' ');
+  const user = [
+    `Assignment: ${ctx.assignmentTitle} (${ctx.subject})`,
+    `Deadline: ${ctx.deadline} (today is ${ctx.today}, ${ctx.daysLeft} day(s) left)`,
+    `Unfinished step: "${ctx.stepTitle}", planned ${ctx.stepMinutes} min, done ${ctx.doneMinutes} min, ${ctx.remaining} min left`,
+    `Session outcome: ${ctx.outcome}`,
+    `What got in the way (student's note): ${ctx.note || 'No note given.'}`,
+    `Daily study time: ${ctx.dailyMinutes} min`,
+    ctx.laterSteps.length ? `Steps still planned after this one: ${ctx.laterSteps.join('; ')}` : null,
+  ].filter(Boolean).join('\n');
+  const { json, model } = await chat([{ role: 'system', content: system }, { role: 'user', content: user }], { maxTokens: 1200 });
+  return { ...cleanRecovery(json, ctx.remaining), model };
+}
+
+module.exports = { suggestSteps, suggestRecovery, cleanRecovery, chat, extractJson, cleanSteps, AIError, _setFetch };

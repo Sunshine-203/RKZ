@@ -230,6 +230,7 @@
         </div>
         <ol class="p-steps">${steps}</ol>
         <div class="a-actions">
+          ${a.risk !== 'done' ? `<button class="btn mist small" type="button" data-focus="${esc(a.id)}">Open ${esc(a.subject)} Focus Room</button>` : ''}
           <button class="btn ghost small" type="button" data-edit="${esc(a.id)}">Edit</button>
           <button class="btn ghost small" type="button" data-del="${esc(a.id)}">Delete</button>
         </div>
@@ -241,6 +242,13 @@
   $('planList').addEventListener('click', async (ev) => {
     const edit = ev.target.closest('[data-edit]');
     const del = ev.target.closest('[data-del]');
+    const foc = ev.target.closest('[data-focus]');
+    if (foc && window.RKZFocus) {
+      const a = state.assignments.find((x) => x.id === foc.dataset.focus);
+      const step = a && a.steps.find((s) => s.status !== 'done');
+      if (step) { showTab('focus'); window.RKZFocus.openTask(step.id); }
+      return;
+    }
     if (edit) {
       const a = state.assignments.find((x) => x.id === edit.dataset.edit);
       if (!a) return;
@@ -337,6 +345,10 @@
     const tabs = document.querySelectorAll('.tab[data-tab]');
     if (![...tabs].some((t) => t.dataset.tab === name)) name = 'dashboard';
     $('pageTitle').textContent = TITLES[name] || '';
+    const SUBS = { planner: 'Plan your assignments around the time you actually have.', focus: 'Your subject, your setup.', review: 'Pick up where you left off.' };
+    document.querySelector('.main-top').classList.toggle('big', name !== 'dashboard');
+    $('pageSub').hidden = !SUBS[name];
+    $('pageSub').textContent = SUBS[name] || '';
     $('openPlannerBtn').hidden = name !== 'dashboard';
     window.scrollTo(0, 0);
     tabs.forEach((t) => {

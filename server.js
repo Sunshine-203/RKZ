@@ -112,7 +112,13 @@ async function buildState(uid, { persist = true } = {}) {
     scene: r.scene, soundOn: r.sound_on, plannedMinutes: r.planned_minutes, focusedSeconds: r.focused_seconds,
     outcome: r.outcome, doneMinutes: r.done_minutes, note: r.note, reviewed: r.reviewed, createdAt: r.created_at.toISOString(),
   }));
-  return { today, settings: { dailyMinutes }, channels, assignments, agenda: plan.agenda, sessions };
+  const rv = await pool.query(
+    'select id, session_id, assignment_id, source, ai_message, ai_tip, before, after, created_at from revisions where user_id=$1 order by created_at desc limit 5', [uid]);
+  const revisions = rv.rows.map((r) => ({
+    id: r.id, sessionId: r.session_id, assignmentId: r.assignment_id, source: r.source, aiMessage: r.ai_message, aiTip: r.ai_tip,
+    before: r.before, after: r.after, createdAt: r.created_at.toISOString(),
+  }));
+  return { today, settings: { dailyMinutes }, channels, assignments, agenda: plan.agenda, sessions, revisions };
 }
 
 async function channelFor(client, uid, subject) {
@@ -324,6 +330,126 @@ app.post('/api/sessions', wrap(async (req, res) => {
     res.status(201).json({ ...(await buildState(req.uid)), sessionId: ins.rows[0].id });
   } catch (e) { await client.query('rollback'); throw e; }
   finally { client.release(); }
+}));
+
+// ---------- Progress Review + Replanning ----------
+function snapshot(state, assignmentId) {
+  const a = state.assignments.find((x) => x.id === assignmentId);
+  if (!a) return null;
+  return {
+    title: a.title, subject: a.subject, deadline: a.deadline, risk: a.risk, finishDate: a.finishDate,
+    remainingMinutes: a.remainingMinutes, unscheduledMinutes: a.unscheduledMinutes,
+    steps: a.steps.map((s) => ({ id: s.id, title: s.title, minutes: s.minutes, status: s.status, doneMinutes: s.doneMinutes, source: s.source, sessions: s.sessions, unscheduledMinutes: s.unscheduledMinutes })),
+  };
+}
+
+async function loadReviewContext(uid, sessionId) {
+  const r = await pool.query(
+    `select se.id, se.outcome, se.note, se.reviewed, s.id as step_id, s.title as step_title, s.minutes, s.done_minutes, s.status, s.ord,
+            a.id as assignment_id, a.title as assignment_title, to_char(a.deadline,'YYYY-MM-DD') as deadline, c.name as subject
+     from sessions se
+     join steps s on s.id = se.step_id and s.user_id = se.user_id
+     join assignments a on a.id = s.assignment_id
+     left join channels c on c.id = a.channel_id
+     where se.id=$1 and se.user_id=$2`, [sessionId, uid]);
+  const row = r.rows[0];
+  if (!row) { const e = new Error('Session not found, or its task was deleted.'); e.status = 404; throw e; }
+  return row;
+}
+
+app.post('/api/demo/review-sample', wrap(async (req, res) => {
+  const today = kuwaitToday();
+  const plusDays = (n) => { const d = new Date(today + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+  const title = 'History Essay: Ottoman Reforms';
+  const client = await pool.connect();
+  try {
+    await client.query('begin');
+    const has = await client.query(
+      `select se.id from sessions se join assignments a on a.id = se.assignment_id
+       where se.user_id=$1 and a.title=$2 and se.reviewed=false`, [req.uid, title]);
+    if (!has.rows[0]) {
+      const ch = await client.query(
+        `insert into channels (user_id, name, scene, sound_on, focus_minutes) values ($1,'History','fireplace',true,30)
+         on conflict (user_id, lower(name)) do update set name=channels.name returning id`, [req.uid]);
+      const a = await client.query('insert into assignments (user_id, channel_id, title, description, deadline) values ($1,$2,$3,$4,$5) returning id',
+        [req.uid, ch.rows[0].id, title, '1200-word essay on the Tanzimat reforms with 4 sources.', plusDays(3)]);
+      const steps = [['Read sources and take notes', 60, 20, 'partial'], ['Write the outline and thesis', 30, 0, 'todo'], ['Write the full draft', 90, 0, 'todo'], ['Edit and add citations', 30, 0, 'todo']];
+      let first;
+      for (const [i, [t, m, d, st]] of steps.entries()) {
+        const s = await client.query('insert into steps (assignment_id, user_id, ord, title, minutes, done_minutes, status) values ($1,$2,$3,$4,$5,$6,$7) returning id',
+          [a.rows[0].id, req.uid, i, t, m, d, st]);
+        if (i === 0) first = s.rows[0].id;
+      }
+      await client.query(
+        `insert into sessions (user_id, step_id, assignment_id, channel_id, step_title, scene, sound_on, planned_minutes, focused_seconds, outcome, done_minutes, note)
+         values ($1,$2,$3,$4,'Read sources and take notes','fireplace',true,60,1200,'partial',20,$5)`,
+        [req.uid, first, a.rows[0].id, ch.rows[0].id, 'Family visitors came over and I kept checking my phone. Only got through 1 of the 4 sources.']);
+    }
+    await client.query('commit');
+  } catch (e) { await client.query('rollback'); throw e; }
+  finally { client.release(); }
+  res.json(await buildState(req.uid));
+}));
+
+app.post('/api/ai/recovery', (req, res, next) => aiRateLimit(req, res, next), wrap(async (req, res) => {
+  const sessionId = v.uuid(req.body.sessionId, { field: 'session' });
+  const note = v.text(req.body.note, { field: 'Note', max: 500 });
+  const row = await loadReviewContext(req.uid, sessionId);
+  const remaining = Math.max(0, row.minutes - row.done_minutes);
+  if (remaining === 0) throw new v.ValidationError('This task is already finished. Nothing to recover.');
+  const today = kuwaitToday();
+  const later = await pool.query('select title from steps where assignment_id=$1 and user_id=$2 and ord>$3 and status<>$4 order by ord limit 6',
+    [row.assignment_id, req.uid, row.ord, 'done']);
+  const u = await pool.query('select daily_minutes from users where id=$1', [req.uid]);
+  const daysLeft = Math.round((Date.parse(row.deadline + 'T00:00:00Z') - Date.parse(today + 'T00:00:00Z')) / 86400000);
+  const result = await ai.suggestRecovery({
+    assignmentTitle: row.assignment_title, subject: row.subject || '', deadline: row.deadline, today, daysLeft,
+    stepTitle: row.step_title, stepMinutes: row.minutes, doneMinutes: row.done_minutes, remaining, outcome: row.outcome,
+    note: note || row.note, dailyMinutes: u.rows[0]?.daily_minutes ?? 60, laterSteps: later.rows.map((r) => r.title),
+  });
+  res.json({ ...result, remainingMinutes: remaining });
+}));
+
+app.post('/api/recovery/apply', wrap(async (req, res) => {
+  const sessionId = v.uuid(req.body.sessionId, { field: 'session' });
+  const source = req.body.source === 'ai' ? 'ai' : 'manual';
+  const note = v.text(req.body.note, { field: 'Note', max: 500 });
+  const aiMessage = v.text(req.body.aiMessage, { field: 'AI message', max: 300 });
+  const aiTip = v.text(req.body.aiTip, { field: 'AI tip', max: 200 });
+  const steps = v.steps(req.body.steps);
+  if (steps.length > 5) throw new v.ValidationError('Keep the recovery to 5 steps or fewer.');
+  const row = await loadReviewContext(req.uid, sessionId);
+  if (row.reviewed) { const e = new v.ValidationError('This session was already replanned.'); e.status = 409; throw e; }
+
+  const before = snapshot(await buildState(req.uid), row.assignment_id);
+  const client = await pool.connect();
+  try {
+    await client.query('begin');
+    await client.query('select id from steps where id=$1 and user_id=$2 for update', [row.step_id, req.uid]);
+    const n = steps.length;
+    // make room right after the unfinished step
+    await client.query('update steps set ord = ord + $1 where assignment_id=$2 and user_id=$3 and ord > $4', [n, row.assignment_id, req.uid, row.ord]);
+    for (const [i, s] of steps.entries()) {
+      await client.query('insert into steps (assignment_id, user_id, ord, title, minutes, source) values ($1,$2,$3,$4,$5,$6)',
+        [row.assignment_id, req.uid, row.ord + 1 + i, s.title, s.minutes, s.source === 'ai' ? 'ai' : 'recovery']);
+    }
+    // preserve completed work: the finished part stays as a done step; an untouched step is replaced
+    if (row.done_minutes > 0) {
+      await client.query("update steps set minutes=done_minutes, status='done' where id=$1 and user_id=$2", [row.step_id, req.uid]);
+    } else {
+      await client.query('delete from steps where id=$1 and user_id=$2', [row.step_id, req.uid]);
+    }
+    await client.query('update sessions set reviewed=true, note=case when $1 <> \'\' then $1 else note end where id=$2 and user_id=$3', [note, sessionId, req.uid]);
+    await client.query('commit');
+  } catch (e) { await client.query('rollback'); throw e; }
+  finally { client.release(); }
+
+  const state = await buildState(req.uid);
+  const after = snapshot(state, row.assignment_id);
+  await pool.query(
+    'insert into revisions (user_id, session_id, assignment_id, source, ai_message, ai_tip, before, after) values ($1,$2,$3,$4,$5,$6,$7,$8)',
+    [req.uid, sessionId, row.assignment_id, source, aiMessage, aiTip, JSON.stringify(before), JSON.stringify(after)]);
+  res.json(await buildState(req.uid));
 }));
 
 // ---------- AI ----------

@@ -12,7 +12,7 @@ const ai = require('../src/ai');
 
 let server, base;
 test.before(async () => {
-  await pool.query('drop table if exists sessions, steps, assignments, channels, users cascade');
+  await pool.query('drop table if exists revisions, sessions, steps, assignments, channels, users cascade');
   await migrate();
   server = app.listen(0); base = `http://127.0.0.1:${server.address().port}`;
 });
@@ -147,4 +147,68 @@ test('focus room: channels keep separate defaults, sessions save outcomes, isola
   // invalid outcome / foreign step
   r = await a('POST', '/api/sessions', { stepId: step.id, outcome: 'great', scene: 'rain', soundOn: true, plannedMinutes: 25 }); assert.strictEqual(r.status, 400);
   r = await b('POST', '/api/sessions', { stepId: step.id, outcome: 'missed', scene: 'rain', soundOn: true, plannedMinutes: 25 }); assert.strictEqual(r.status, 404);
+});
+
+test('progress review: AI recovery keeps finished work, adds steps, saves a before/after revision', async () => {
+  const a = client(); const b = client();
+  let r = await a('POST', '/api/demo/review-sample');
+  assert.strictEqual(r.status, 200);
+  const sess = r.body.sessions.find((s) => !s.reviewed && s.outcome === 'partial');
+  assert.ok(sess && sess.note.includes('phone'));
+  // idempotent sample
+  r = await a('POST', '/api/demo/review-sample');
+  assert.strictEqual(r.body.sessions.filter((s) => !s.reviewed).length, 1);
+
+  let sentPrompt;
+  ai._setFetch(async (url, opts) => { sentPrompt = JSON.parse(opts.body).messages[1].content; return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({
+    message: 'Busy evening at home is normal. Let’s finish the sources in short, phone-free blocks.',
+    steps: [{ title: 'Phone in another room: read sources 2 and 3', minutes: 25 }, { title: 'Read source 4 and add notes', minutes: 20 }, { title: 'Bad step', minutes: 'x' }],
+    tip: 'Set a 25-minute timer and leave your phone outside the room.' }) } }] }), { status: 200 }); });
+  r = await a('POST', '/api/ai/recovery', { sessionId: sess.id, note: '' });
+  assert.strictEqual(r.status, 200);
+  assert.strictEqual(r.body.steps.length, 2);
+  assert.strictEqual(r.body.remainingMinutes, 40);
+  assert.match(sentPrompt, /Family visitors/);
+  assert.match(sentPrompt, /40 min left/);
+
+  // other browser cannot touch it
+  await b('GET', '/api/state');
+  r = await b('POST', '/api/ai/recovery', { sessionId: sess.id }); assert.strictEqual(r.status, 404);
+  r = await b('POST', '/api/recovery/apply', { sessionId: sess.id, steps: [{ title: 'x', minutes: 10 }] }); assert.strictEqual(r.status, 404);
+
+  r = await a('POST', '/api/recovery/apply', { sessionId: sess.id, source: 'ai', steps: [{ title: 'Phone in another room: read sources 2 and 3', minutes: 25, source: 'ai' }, { title: 'Read source 4 and add notes', minutes: 20, source: 'ai' }], aiMessage: 'ok', aiTip: 'tip' });
+  assert.strictEqual(r.status, 200);
+  const essay = r.body.assignments.find((x) => x.title === 'History Essay: Ottoman Reforms');
+  assert.deepStrictEqual(essay.steps.map((s) => [s.title, s.status, s.minutes]), [
+    ['Read sources and take notes', 'done', 20],
+    ['Phone in another room: read sources 2 and 3', 'todo', 25],
+    ['Read source 4 and add notes', 'todo', 20],
+    ['Write the outline and thesis', 'todo', 30],
+    ['Write the full draft', 'todo', 90],
+    ['Edit and add citations', 'todo', 30],
+  ]);
+  const rev = r.body.revisions[0];
+  assert.strictEqual(rev.source, 'ai');
+  assert.strictEqual(rev.before.steps.length, 4);
+  assert.strictEqual(rev.after.steps.length, 6);
+  // persists after refresh, cannot re-apply
+  r = await a('GET', '/api/state');
+  assert.strictEqual(r.body.revisions.length, 1);
+  assert.ok(r.body.sessions.find((s) => s.id === sess.id).reviewed);
+  r = await a('POST', '/api/recovery/apply', { sessionId: sess.id, steps: [{ title: 'x', minutes: 10 }] });
+  assert.strictEqual(r.status, 409);
+});
+
+test('missed session with no progress is replaced by recovery steps (manual, no AI)', async () => {
+  const a = client();
+  let r = await a('POST', '/api/assignments', { title: 'Physics lab', subject: 'Physics', deadline: inDays(1), steps: [{ title: 'Run experiment', minutes: 60 }, { title: 'Write report', minutes: 60 }] });
+  const step = r.body.assignments[0].steps[0];
+  r = await a('POST', '/api/sessions', { stepId: step.id, outcome: 'missed', scene: 'plain', soundOn: false, plannedMinutes: 60, note: 'Lab was closed' });
+  const sid = r.body.sessionId;
+  r = await a('POST', '/api/recovery/apply', { sessionId: sid, source: 'manual', steps: [{ title: 'Finish: Run experiment', minutes: 60 }] });
+  assert.strictEqual(r.status, 200);
+  const steps = r.body.assignments[0].steps;
+  assert.deepStrictEqual(steps.map((s) => s.title), ['Finish: Run experiment', 'Write report']);
+  assert.strictEqual(r.body.revisions[0].source, 'manual');
+  assert.strictEqual(r.body.assignments[0].risk, 'yellow'); // 120 min over today+tomorrow at 60/day finishes on due day
 });
