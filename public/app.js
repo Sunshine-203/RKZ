@@ -129,6 +129,7 @@
       formSteps = data.steps.map((s) => ({ title: s.title, minutes: s.minutes, source: 'ai' }));
       renderSteps(true);
       say(`AI suggested ${formSteps.length} steps. Edit anything you like, then tap Save Plan.`, 'ok');
+      toast('✨ AI study steps ready', `${formSteps.length} steps. Edit them, then Save Plan.`);
     } catch (e) {
       say(e.message + ' You can type your own steps with “+ Add step”.', 'err');
     } finally {
@@ -177,6 +178,7 @@
       const a = state.assignments.find((x) => x.id === data.savedId);
       if (a && a.risk === 'red') say(`Plan ${wasEdit ? 'updated' : 'saved'}, but ${mins(a.unscheduledMinutes)} won’t fit before the deadline. See the red warning.`, 'err');
       else say(`Plan ${wasEdit ? 'updated' : 'saved'}! Your steps are scheduled.`, 'ok');
+      toast(a && a.risk === 'red' ? '⚠️ Plan saved, but it won’t all fit' : '✅ Plan saved', a ? `${a.title} · ${a.steps.length} steps scheduled` : '', a && a.risk === 'red' ? 'warn' : '');
     } catch (e) {
       say(e.message, 'err');
     } finally { btn.disabled = false; }
@@ -303,7 +305,10 @@
   const SCENE_NAME = { plain: 'Plain', fireplace: 'Fireplace', ocean: 'Ocean', rain: 'Rain' };
   function renderDashboard() {
     const h = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kuwait', hour: 'numeric', hour12: false }).format(new Date()));
-    $('greeting').textContent = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+    const first = (state.profile && state.profile.name ? state.profile.name.split(' ')[0] : '');
+    $('greeting').textContent = (h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening') + (first ? `, ${first}` : '');
+    $('userName').textContent = state.profile && !state.profile.guest ? (state.profile.name || state.profile.username) : 'Guest';
+    $('userBtn').textContent = state.profile && !state.profile.guest ? 'Log out' : 'Sign in';
     const open = state.assignments.filter((a) => a.risk !== 'done');
     $('statDue').textContent = open.filter((a) => a.deadline === state.today).length;
     $('statOverdue').textContent = open.filter((a) => a.deadline < state.today).length;
@@ -363,8 +368,16 @@
   window.addEventListener('hashchange', () => showTab(location.hash.slice(1)));
 
   // Shared helpers for the other screens
+  function toast(title, body, kind) {
+    const box = $('toasts'); const el = document.createElement('div');
+    el.className = 'toast' + (kind ? ' ' + kind : '');
+    el.innerHTML = `<b>${esc(title)}</b>${body ? `<span>${esc(body)}</span>` : ''}<button type="button" aria-label="Close">×</button>`;
+    el.querySelector('button').addEventListener('click', () => el.remove());
+    box.appendChild(el);
+    setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 400); }, 5200);
+  }
   window.RKZ = {
-    api, esc, mins, fmtDay,
+    api, esc, mins, fmtDay, toast,
     get state() { return state; },
     setState(s) { state = s; renderAll(); },
     showTab,

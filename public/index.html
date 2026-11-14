@@ -11,6 +11,28 @@
   <script src="/theme.js"></script>
 </head>
 <body>
+
+<div id="authScreen" class="auth-screen" hidden>
+  <div class="auth-card">
+    <div class="auth-brand"><span class="logo-mark big" aria-hidden="true"></span><span>RKZ <span class="ar" lang="ar" dir="rtl">ركز</span></span></div>
+    <p class="auth-slogan">When plans break, focus starts here.</p>
+    <div class="auth-tabs" role="tablist">
+      <button type="button" class="auth-tab active" data-auth="login" role="tab">Log in</button>
+      <button type="button" class="auth-tab" data-auth="register" role="tab">Sign up</button>
+    </div>
+    <form id="authForm" novalidate>
+      <label class="field" id="nameWrap" hidden>Your name <input id="authName" type="text" maxlength="40" autocomplete="name" placeholder="e.g. Shurouq"></label>
+      <label class="field">Username <input id="authUser" type="text" maxlength="30" autocomplete="username" placeholder="e.g. shurouq"></label>
+      <label class="field">Password <input id="authPass" type="password" maxlength="100" autocomplete="current-password" placeholder="At least 6 characters"></label>
+      <button id="authSubmit" class="btn primary wide" type="submit">Log in</button>
+      <p id="authMsg" class="msg" role="status" aria-live="polite"></p>
+    </form>
+    <div class="auth-or"><span>or</span></div>
+    <button id="guestBtn" class="btn mist wide" type="button">Continue as guest →</button>
+    <p class="hint center">No account needed. Your plans stay private to this browser. Sign up anytime to keep them.</p>
+  </div>
+</div>
+<div id="toasts" class="toasts" aria-live="polite"></div>
 <div class="app">
   <aside class="sidebar">
     <div class="side-brand">
@@ -29,6 +51,10 @@
       <button id="themeBtn" class="tab theme-toggle" type="button">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></svg><span id="themeLabel">Dark mode</span></button>
     </nav>
+    <div class="side-user">
+      <div id="userName" class="user-name">Guest</div>
+      <button id="userBtn" class="btn ghost small" type="button">Sign in</button>
+    </div>
     <p class="side-slogan">When plans break,<br>focus starts here.</p>
   </aside>
 
@@ -294,5 +320,6 @@
   <script src="/sound.js"></script>
   <script src="/focus.js"></script>
   <script src="/review.js"></script>
+  <script src="/auth.js"></script>
 </body>
 </html>

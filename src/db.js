@@ -14,6 +14,11 @@ create table if not exists users (
   created_at timestamptz not null default now()
 );
 
+alter table users add column if not exists username text;
+alter table users add column if not exists password_hash text;
+alter table users add column if not exists display_name text;
+create unique index if not exists users_username on users (lower(username));
+
 create table if not exists channels (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references users(id) on delete cascade,

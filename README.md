@@ -27,7 +27,8 @@ RKZ is an AI-assisted study web app for university students in Kuwait. It turns 
 - `OPENROUTER_API_KEY` is a server environment variable. It is never in the browser, the code or this repo.
 
 ## Security
-- No login: each browser gets a random private id in an HttpOnly cookie, and every database query is filtered by it.
+- Optional accounts: sign up / log in with passwords hashed using scrypt + salt; login errors are always the generic "Incorrect username or password."; login attempts are rate-limited.
+- Guests need no login: each browser gets a random private id in an HttpOnly cookie, and every database query is filtered by it. Signing up keeps the guest's plans.
 - All input is validated on the server (`src/validate.js`), plus request size limits, a per-user AI rate limit and strict security headers (CSP).
 
 ## Run locally

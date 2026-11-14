@@ -62,7 +62,7 @@ function kuwaitToday() {
 async function buildState(uid, { persist = true } = {}) {
   const today = kuwaitToday();
   const [u, ch, as, st] = await Promise.all([
-    pool.query('select daily_minutes from users where id=$1', [uid]),
+    pool.query('select daily_minutes, username, display_name from users where id=$1', [uid]),
     pool.query('select id, name, scene, sound_on, focus_minutes from channels where user_id=$1 order by created_at', [uid]),
     pool.query("select id, channel_id, title, description, to_char(deadline,'YYYY-MM-DD') as deadline, created_at from assignments where user_id=$1 order by deadline, created_at", [uid]),
     pool.query('select id, assignment_id, ord, title, minutes, done_minutes, status, source from steps where user_id=$1 order by ord', [uid]),
@@ -118,7 +118,8 @@ async function buildState(uid, { persist = true } = {}) {
     id: r.id, sessionId: r.session_id, assignmentId: r.assignment_id, source: r.source, aiMessage: r.ai_message, aiTip: r.ai_tip,
     before: r.before, after: r.after, createdAt: r.created_at.toISOString(),
   }));
-  return { today, settings: { dailyMinutes }, channels, assignments, agenda: plan.agenda, sessions, revisions };
+  const profile = { name: u.rows[0]?.display_name || '', username: u.rows[0]?.username || '', guest: !u.rows[0]?.username };
+  return { today, settings: { dailyMinutes }, profile, channels, assignments, agenda: plan.agenda, sessions, revisions };
 }
 
 async function channelFor(client, uid, subject) {
@@ -215,6 +216,67 @@ app.delete('/api/assignments/:id', wrap(async (req, res) => {
   const r = await pool.query('delete from assignments where id=$1 and user_id=$2', [id, req.uid]);
   if (!r.rowCount) return res.status(404).json({ error: 'Assignment not found.' });
   res.json(await buildState(req.uid));
+}));
+
+
+// ---------- Accounts (optional — guests can use everything) ----------
+const scryptAsync = (pw, salt) => new Promise((ok, bad) => crypto.scrypt(pw, salt, 64, (e, k) => (e ? bad(e) : ok(k))));
+async function hashPassword(pw) { const salt = crypto.randomBytes(16).toString('hex'); return salt + ':' + (await scryptAsync(pw, salt)).toString('hex'); }
+async function checkPassword(pw, stored) {
+  if (!stored || !stored.includes(':')) return false;
+  const [salt, hex] = stored.split(':');
+  const a = Buffer.from(hex, 'hex'); const b = await scryptAsync(pw, salt);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+function setUidCookie(req, res, uid) {
+  const secure = req.secure ? '; Secure' : '';
+  res.setHeader('Set-Cookie', `rkz_uid=${uid}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000${secure}`);
+}
+const authHits = new Map();
+function authLimit(req, res, next) {
+  const key = req.ip || 'x'; const now = Date.now();
+  const list = (authHits.get(key) || []).filter((t) => now - t < 10 * 60 * 1000);
+  if (list.length >= 20) return res.status(429).json({ error: 'Too many attempts. Please wait a few minutes.' });
+  list.push(now); authHits.set(key, list); next();
+}
+function readCreds(body, { withName = false } = {}) {
+  const username = v.text(body.username, { field: 'Username', min: 3, max: 30 }).toLowerCase();
+  if (!/^[a-z0-9_.]+$/.test(username)) throw new v.ValidationError('Username can use letters, numbers, _ and . only.');
+  if (typeof body.password !== 'string' || body.password.length < 6 || body.password.length > 100) throw new v.ValidationError('Password must be 6 to 100 characters.');
+  const out = { username, password: body.password };
+  if (withName) out.name = v.text(body.name, { field: 'Name', min: 1, max: 40 });
+  return out;
+}
+
+app.post('/api/auth/register', authLimit, wrap(async (req, res) => {
+  const c = readCreds(req.body, { withName: true });
+  const cur = await pool.query('select username from users where id=$1', [req.uid]);
+  if (cur.rows[0]?.username) { const e = new v.ValidationError('You are already signed in. Log out first.'); e.status = 409; throw e; }
+  try {
+    // the guest's existing plans move into the new account
+    await pool.query('update users set username=$1, password_hash=$2, display_name=$3 where id=$4', [c.username, await hashPassword(c.password), c.name, req.uid]);
+  } catch (e) {
+    if (e.code === '23505') { const err = new v.ValidationError('That username is taken. Try another one.'); err.status = 409; throw err; }
+    throw e;
+  }
+  res.status(201).json(await buildState(req.uid));
+}));
+
+app.post('/api/auth/login', authLimit, wrap(async (req, res) => {
+  let c;
+  try { c = readCreds(req.body); } catch { return res.status(401).json({ error: 'Incorrect username or password.' }); }
+  const r = await pool.query('select id, password_hash from users where lower(username)=lower($1)', [c.username]);
+  const okPw = r.rows[0] ? await checkPassword(c.password, r.rows[0].password_hash) : (await hashPassword(c.password), false);
+  if (!okPw) return res.status(401).json({ error: 'Incorrect username or password.' });
+  setUidCookie(req, res, r.rows[0].id);
+  res.json(await buildState(r.rows[0].id));
+}));
+
+app.post('/api/auth/logout', wrap(async (req, res) => {
+  const fresh = crypto.randomUUID();
+  await pool.query('insert into users (id) values ($1) on conflict do nothing', [fresh]);
+  setUidCookie(req, res, fresh);
+  res.json(await buildState(fresh));
 }));
 
 // ---------- Focus Room: subject channels ----------

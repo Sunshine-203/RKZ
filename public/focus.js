@@ -261,6 +261,7 @@
         // focus round done -> automatic break
         timer.phase = 'break'; timer.remainingMs = session.breakMinutes * 60000; timer.endAt = now + timer.remainingMs;
         $('roomNote').textContent = `Session ${timer.round} done! Enjoy a ${session.breakMinutes}-minute break.`;
+        R().toast('☕ Break time', `Session ${timer.round} done. Stretch and drink water for ${session.breakMinutes} min.`);
         applyRoom(); syncSound(); return;
       }
       if (mode === 'pomodoro' && timer.phase === 'break') {
@@ -332,6 +333,7 @@
       const c = channelById(activeChannel); if (c) { session = fromChannel(c); draft = { name: c.name, ...fromChannel(c) }; }
       resetTimer(); renderAll();
       $('roomNote').textContent = outcome === 'complete' ? `Saved: ${label}. Nice work!` : `Saved: ${label}. Review it in Progress Review to replan.`;
+      R().toast(outcome === 'complete' ? '🎉 Session complete' : 'Session saved', outcome === 'complete' ? 'Nice work! One step closer.' : 'Open Progress Review to get an AI recovery plan.');
     } catch (e) { say('outcomeMsg', e.message, 'err'); }
   });
 

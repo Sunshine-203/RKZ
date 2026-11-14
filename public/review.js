@@ -146,6 +146,7 @@
       });
       closePanel();
       R().setState(s);
+      R().toast('✅ Plan rebuilt', 'Finished work kept, new steps scheduled. See Before → After.');
       say('', '', 'reviewMsg');
       $('compareCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch (e) { say(e.message, 'err'); }
