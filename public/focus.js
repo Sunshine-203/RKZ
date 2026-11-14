@@ -9,9 +9,10 @@
 
   let activeChannel = null;      // channel id
   let current = null;            // step id
-  let session = { scene: 'plain', soundOn: false, minutes: 25 };
+  let session = { scene: 'plain', soundOn: false, minutes: 25, breakMinutes: 5 };
+  let mode = 'pomodoro';           // 'pomodoro' (focus + break cycles) or 'custom' (one timer)
   let draft = null;              // { name, scene, soundOn, minutes } — edit panel
-  let timer = { status: 'idle', remainingMs: 25 * 60000, endAt: 0, focusedMs: 0, lastTick: 0 };
+  let timer = { status: 'idle', phase: 'focus', round: 1, remainingMs: 25 * 60000, endAt: 0, focusedMs: 0, lastTick: 0 };
   const baseTitle = document.title;
 
   const fmt = (ms) => {
@@ -36,7 +37,7 @@
   }
   function say(id, text, kind) { const el = $(id); el.className = 'msg' + (kind ? ' ' + kind : ''); el.textContent = text; }
   const busy = () => timer.status === 'running' || timer.status === 'paused';
-  const fromChannel = (c) => ({ scene: c.scene, soundOn: c.soundOn, minutes: c.focusMinutes });
+  const fromChannel = (c) => ({ scene: c.scene, soundOn: c.soundOn, minutes: c.focusMinutes, breakMinutes: session.breakMinutes || 5 });
 
   // ---------- channel tabs ----------
   function renderTabs() {
@@ -111,14 +112,28 @@
     if (!draft) return;
     draft.scene = b.dataset.scene;
     if (draft.scene !== 'plain' && !draft.soundOn) draft.soundOn = true;
-    renderEdit(); say('editMsg', 'Changed. Use it for this session, or save it as the default.');
+    session.scene = draft.scene; session.soundOn = draft.soundOn;
+    renderEdit(); applyRoom(); syncSound();
+    say('editMsg', 'Showing now for this session. Tap “Save as default” to keep it for this subject.');
   }));
-  $('editSound').addEventListener('click', () => { if (!draft) return; draft.soundOn = !draft.soundOn; renderEdit(); });
+  $('editSound').addEventListener('click', () => { if (!draft) return; draft.soundOn = !draft.soundOn; session.soundOn = draft.soundOn; renderEdit(); applyRoom(); syncSound(); });
   $('editName').addEventListener('input', () => { if (draft) draft.name = $('editName').value; });
   $('editMinutes').addEventListener('input', () => {
     const n = Number($('editMinutes').value);
-    if (draft && Number.isInteger(n) && n >= 5 && n <= 180) draft.minutes = n;
+    if (draft && Number.isInteger(n) && n >= 5 && n <= 180) {
+      draft.minutes = n;
+      if (!busy()) { session.minutes = n; resetTimer(); applyRoom(); }
+    }
   });
+  $('editBreak').addEventListener('input', () => {
+    const n = Number($('editBreak').value);
+    if (Number.isInteger(n) && n >= 1 && n <= 30) { session.breakMinutes = n; applyRoom(); }
+  });
+  document.querySelectorAll('[data-mode]').forEach((b) => b.addEventListener('click', () => {
+    if (busy()) { say('editMsg', 'Reset or finish the session to switch mode.', 'err'); return; }
+    mode = b.dataset.mode; resetTimer(); applyRoom();
+  }));
+  $('resetBtn').addEventListener('click', () => { resetTimer(); applyRoom(); syncSound(); renderTasks(); });
 
   $('useSessionBtn').addEventListener('click', () => {
     if (!draft) return;
@@ -162,8 +177,9 @@
     }).join('');
 
     const pick = $('taskPick');
-    $('taskPickWrap').hidden = tasks.length < 2;
-    pick.innerHTML = tasks.map(({ s }) => `<option value="${esc(s.id)}"${s.id === current ? ' selected' : ''}>${esc(s.title)}</option>`).join('');
+    $('taskPickWrap').hidden = true;
+    pick.innerHTML = tasks.length ? '' : '<option value="">No task linked</option>';
+    pick.innerHTML += tasks.map(({ s }) => `<option value="${esc(s.id)}"${s.id === current ? ' selected' : ''}>${esc(s.title)}</option>`).join('');
     pick.disabled = busy();
   }
   $('taskList').addEventListener('click', (ev) => {
@@ -171,7 +187,7 @@
     openTask(b.dataset.open);
     $('room').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   });
-  $('taskPick').addEventListener('change', () => openTask($('taskPick').value));
+  $('taskPick').addEventListener('change', () => { if ($('taskPick').value) openTask($('taskPick').value); });
 
   function openTask(stepId) {
     const f = findStep(stepId); if (!f) return;
@@ -188,7 +204,14 @@
     const c = channelById(activeChannel);
     const f = current && findStep(current);
     $('room').dataset.scene = session.scene;
-    $('roomLabel').textContent = c ? `${c.name} / ${SCENE[session.scene]}` : 'No channel yet';
+    $('roomLabel').textContent = c ? `${c.name} — ${SCENE[session.scene]}` : 'No channel yet';
+    $('phaseLabel').textContent = mode === 'custom' ? '⏱ Custom timer' : timer.phase === 'break' ? `☕ Break · ${session.breakMinutes} min` : `⏱ Focus · Session ${timer.round}`;
+    $('phaseLabel').classList.toggle('break', timer.phase === 'break');
+    document.querySelectorAll('[data-mode]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.mode === mode)));
+    $('resetBtn').disabled = !f || timer.status === 'idle';
+    const today = R().state.today;
+    const n = R().state.sessions.filter((x) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kuwait' }).format(new Date(x.createdAt)) === today).length;
+    $('sessionsToday').textContent = `${n} session${n === 1 ? '' : 's'} logged today${timer.round > 1 ? ` · ${timer.round - 1} pomodoro${timer.round > 2 ? 's' : ''} done` : ''}`;
     $('roomTask').textContent = f ? f.s.title : c ? `No open ${c.name} tasks yet` : 'Tap “Load sample” or “+ New Channel” to start.';
     const silent = session.scene === 'plain';
     const mb = $('muteBtn');
@@ -196,9 +219,9 @@
     mb.textContent = silent ? '🔇 Silent' : session.soundOn ? '🔈 Mute' : '🔊 Unmute';
     mb.setAttribute('aria-pressed', String(!session.soundOn));
     $('startBtn').disabled = !f;
-    $('startBtn').textContent = timer.status === 'running' ? '❚❚ Pause' : timer.status === 'paused' ? '▷ Resume' : '▷ Start session';
+    $('startBtn').textContent = timer.status === 'running' ? '❚❚ Pause' : timer.status === 'paused' ? '▷ Resume' : timer.phase === 'break' ? '▷ Start break' : '▷ Start';
     document.querySelectorAll('[data-outcome]').forEach((b) => { b.disabled = !f; });
-    $('timerState').textContent = { idle: f ? 'Ready' : '', running: 'Focusing…', paused: 'Paused', finished: 'Time’s up!' }[timer.status];
+    $('timerState').textContent = { idle: f ? (timer.phase === 'break' ? 'Break time. Stretch, drink water.' : 'Ready') : 'Pick a task to start', running: timer.phase === 'break' ? 'On break…' : 'Focusing…', paused: 'Paused', finished: 'Time’s up!' }[timer.status];
     drawTime();
   }
   function drawTime() {
@@ -212,13 +235,14 @@
   $('muteBtn').addEventListener('click', () => { session.soundOn = !session.soundOn; applyRoom(); syncSound(); });
 
   // ---------- timer ----------
-  function resetTimer() { timer = { status: 'idle', remainingMs: session.minutes * 60000, endAt: 0, focusedMs: 0, lastTick: 0 }; }
+  function resetTimer() { timer = { status: 'idle', phase: 'focus', round: 1, remainingMs: session.minutes * 60000, endAt: 0, focusedMs: 0, lastTick: 0 }; }
   function pauseNow() {
     if (timer.status !== 'running') return;
-    const now = Date.now(); timer.remainingMs = timer.endAt - now; timer.focusedMs += now - timer.lastTick; timer.status = 'paused';
+    const now = Date.now(); timer.remainingMs = timer.endAt - now; if (timer.phase === 'focus') timer.focusedMs += now - timer.lastTick; timer.status = 'paused';
   }
   $('startBtn').addEventListener('click', () => {
     if (timer.status === 'running') pauseNow();
+    else if (timer.status === 'finished' && mode === 'pomodoro') return;
     else {
       if (timer.status === 'finished') resetTimer();
       const now = Date.now(); timer.status = 'running'; timer.endAt = now + timer.remainingMs; timer.lastTick = now;
@@ -228,11 +252,26 @@
   setInterval(() => {
     if (timer.status !== 'running') return;
     const now = Date.now();
-    timer.focusedMs += now - timer.lastTick; timer.lastTick = now;
+    if (timer.phase === 'focus') timer.focusedMs += now - timer.lastTick;
+    timer.lastTick = now;
     timer.remainingMs = timer.endAt - now;
     if (timer.remainingMs <= 0) {
+      window.RKZSound.chime();
+      if (mode === 'pomodoro' && timer.phase === 'focus') {
+        // focus round done -> automatic break
+        timer.phase = 'break'; timer.remainingMs = session.breakMinutes * 60000; timer.endAt = now + timer.remainingMs;
+        $('roomNote').textContent = `Session ${timer.round} done! Enjoy a ${session.breakMinutes}-minute break.`;
+        applyRoom(); syncSound(); return;
+      }
+      if (mode === 'pomodoro' && timer.phase === 'break') {
+        // break done -> next focus round, waits for Start
+        timer.phase = 'focus'; timer.round += 1; timer.status = 'paused'; timer.remainingMs = session.minutes * 60000;
+        window.RKZSound.stop();
+        $('roomNote').textContent = `Break over. Ready for session ${timer.round}? Or log the outcome below.`;
+        applyRoom(); return;
+      }
       timer.remainingMs = 0; timer.status = 'finished';
-      window.RKZSound.stop(); window.RKZSound.chime();
+      window.RKZSound.stop();
       applyRoom(); openOutcome('complete');
       return;
     }

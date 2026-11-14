@@ -140,19 +140,28 @@
       <div class="focus-grid">
         <div id="room" class="room" data-scene="plain" aria-label="Focus room">
           <div class="scene-layer" aria-hidden="true"><span class="plain-logo"></span></div>
-          <button id="fullBtn" class="room-icon" type="button" title="Full screen" aria-label="Full screen">⛶</button>
-          <div class="room-inner">
-            <div id="roomLabel" class="room-label">No channel yet</div>
-            <div id="roomTask" class="room-task">Tap “Load sample” or “+ New Channel” to start.</div>
-            <label id="taskPickWrap" class="task-pick" hidden>Task
-              <select id="taskPick" aria-label="Task for this session"></select>
-            </label>
+          <div class="room-top-bar">
+            <span id="roomLabel" class="glass-pill">No channel yet</span>
+            <button id="fullBtn" class="room-icon" type="button" title="Full screen" aria-label="Full screen">⛶</button>
+          </div>
+          <div class="timer-card">
+            <div class="mode-switch" role="radiogroup" aria-label="Timer mode">
+              <button type="button" data-mode="pomodoro" role="radio" aria-checked="true">Pomodoro</button>
+              <button type="button" data-mode="custom" role="radio" aria-checked="false">Custom timer</button>
+            </div>
+            <span id="phaseLabel" class="phase-pill">⏱ Focus · Session 1</span>
             <div id="timer" class="timer" role="timer" aria-live="off">25:00</div>
             <div id="timerState" class="timer-state">Ready</div>
             <div class="room-controls">
-              <button id="startBtn" class="room-btn main" type="button" disabled>▷ Start session</button>
+              <button id="startBtn" class="room-btn main" type="button" disabled>▷ Start</button>
+              <button id="resetBtn" class="room-btn" type="button" disabled>↺ Reset</button>
               <button id="muteBtn" class="room-btn" type="button" aria-pressed="false" disabled>🔈 Mute</button>
             </div>
+            <label class="task-pick">Studying for
+              <select id="taskPick" aria-label="Task for this session"></select>
+            </label>
+            <div id="roomTask" class="room-task" hidden></div>
+            <label id="taskPickWrap" hidden></label>
             <div class="outcome-row">
               <span>Session outcome</span>
               <div>
@@ -161,6 +170,7 @@
                 <button class="room-btn small" type="button" data-outcome="missed" disabled>Missed</button>
               </div>
             </div>
+            <p id="sessionsToday" class="sessions-today">0 sessions today</p>
             <p id="roomNote" class="room-note"></p>
           </div>
         </div>
@@ -180,8 +190,11 @@
             <button id="editSound" class="chip-btn" type="button" aria-pressed="true">Sound: on</button>
             <label class="chip-btn duration">Focus duration:
               <input id="editMinutes" type="number" min="5" max="180" step="5" inputmode="numeric"> min</label>
+            <label class="chip-btn duration">Break:
+              <input id="editBreak" type="number" min="1" max="30" step="1" inputmode="numeric" value="5"> min</label>
+            <p class="hint">Changes show in the room right away for this session.</p>
             <div class="edit-actions">
-              <button id="useSessionBtn" class="chip-btn" type="button">Use for this session</button>
+              <button id="useSessionBtn" class="chip-btn" type="button" hidden>Use for this session</button>
               <button id="saveDefaultsBtn" class="btn mist" type="button">Save as channel default</button>
             </div>
             <p id="editMsg" class="msg" role="status" aria-live="polite"></p>
