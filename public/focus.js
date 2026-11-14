@@ -329,7 +329,7 @@
       if (outcome === 'complete') current = null;
       R().setState(s);
       if (!current) { const t = openTasks(activeChannel); current = t[0] ? t[0].s.id : null; }
-      const c = channelById(activeChannel); if (c) session = fromChannel(c);
+      const c = channelById(activeChannel); if (c) { session = fromChannel(c); draft = { name: c.name, ...fromChannel(c) }; }
       resetTimer(); renderAll();
       $('roomNote').textContent = outcome === 'complete' ? `Saved: ${label}. Nice work!` : `Saved: ${label}. Review it in Progress Review to replan.`;
     } catch (e) { say('outcomeMsg', e.message, 'err'); }
