@@ -491,3 +491,18 @@ input:focus, textarea:focus, select:focus, button:focus-visible { outline: 3px s
 .timer { transition: color .3s; }
 .room .scene-layer { transition: opacity .5s ease; }
 @media (prefers-reduced-motion: reduce) { .view > *, .toast, .modal-card, .auth-card { animation: none !important; } }
+
+/* compact login card: everything visible without scrolling */
+.auth-screen { overflow-y: auto; align-items: center; }
+.auth-card { padding: 20px 22px 18px; }
+.auth-brand { font-size: 1.6rem; }
+.logo-mark.big { width: 36px; height: 36px; }
+.auth-slogan { margin: 4px 0 12px; font-size: .9rem; }
+.auth-card .field { margin: 8px 0; font-size: .86rem; }
+.auth-card input { min-height: 40px; padding: 8px 12px; margin-top: 4px; }
+.auth-card .btn.wide { min-height: 42px; }
+.auth-card .msg { min-height: 0; margin: 6px 0 0; }
+.auth-card .msg:empty { display: none; }
+.auth-or { margin: 10px 0 4px; }
+.auth-card .hint.center { margin-top: 8px; font-size: .8rem; }
+@media (max-height: 760px) { .auth-screen { align-items: start; } }
