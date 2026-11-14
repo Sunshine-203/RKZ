@@ -1,0 +1,17 @@
+{
+  "name": "rkz",
+  "version": "1.0.0",
+  "description": "RKZ (ركز) — AI-assisted study planner, focus room and replanning for university students in Kuwait.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "pg": "^8.13.1"
+  }
+}

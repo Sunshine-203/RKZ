@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RKZ ركز — When plans break, focus starts here</title>
+  <meta name="description" content="RKZ turns your assignments and study time into a realistic plan, with AI study steps.">
+  <meta name="theme-color" content="#E1DBD3">
+  <link rel="icon" href="/favicon.png">
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/theme.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <img src="/logo.png" alt="RKZ logo" width="44" height="44">
+      <div>
+        <h1>RKZ <span lang="ar" dir="rtl">ركز</span></h1>
+        <p class="slogan">When plans break, focus starts here.</p>
+      </div>
+    </div>
+    <button id="themeBtn" class="icon-btn" type="button" aria-label="Switch light or dark mode" title="Light / Dark">🌙</button>
+  </header>
+
+  <nav class="tabs" aria-label="Sections">
+    <button class="tab active" type="button" data-tab="planner" aria-current="page">📅 Planner</button>
+  </nav>
+
+  <main>
+    <section id="planner" class="view">
+      <div class="card study-time">
+        <label for="dailyMinutes">I can study</label>
+        <input id="dailyMinutes" type="number" min="10" max="720" step="5" inputmode="numeric" aria-describedby="dailyHint">
+        <span>minutes per day</span>
+        <button id="saveDaily" class="btn secondary" type="button">Update</button>
+        <p id="dailyHint" class="hint">RKZ fits your study steps into this time, every day until each deadline.</p>
+      </div>
+
+      <div class="grid">
+        <form id="assignmentForm" class="card" novalidate>
+          <div class="card-head">
+            <h2 id="formTitle">New assignment</h2>
+            <button id="sampleBtn" class="btn ghost small" type="button">Load sample</button>
+          </div>
+
+          <label class="field">Assignment name
+            <input id="title" type="text" maxlength="120" placeholder="e.g. Biology lab report" required>
+          </label>
+          <div class="row2">
+            <label class="field">Subject
+              <input id="subject" type="text" maxlength="40" list="subjectList" placeholder="e.g. Biology" required>
+              <datalist id="subjectList"></datalist>
+            </label>
+            <label class="field">Deadline
+              <input id="deadline" type="date" required>
+            </label>
+          </div>
+          <label class="field">What do you need to do? <span class="muted">(AI reads this)</span>
+            <textarea id="description" rows="3" maxlength="2000" placeholder="e.g. 1500-word report on how temperature affects enzyme activity, with graphs and references."></textarea>
+          </label>
+
+          <div class="ai-row">
+            <button id="aiBtn" class="btn ai" type="button">✨ Suggest Study Steps</button>
+            <span class="hint">AI breaks it into steps with time estimates. You can edit everything.</span>
+          </div>
+
+          <div class="steps-head">
+            <h3>Study steps</h3>
+            <span id="stepsTotal" class="muted"></span>
+          </div>
+          <ol id="stepsList" class="steps-editor"></ol>
+          <p id="stepsEmpty" class="empty">No steps yet. Tap <b>✨ Suggest Study Steps</b> or add your own.</p>
+          <button id="addStep" class="btn ghost small" type="button">+ Add step</button>
+
+          <div class="actions">
+            <button id="saveBtn" class="btn primary" type="submit">Save Plan</button>
+            <button id="cancelEdit" class="btn ghost" type="button" hidden>Cancel edit</button>
+          </div>
+          <p id="formMsg" class="msg" role="status" aria-live="polite"></p>
+        </form>
+
+        <div class="plan-col">
+          <div class="card">
+            <h2>Your plan</h2>
+            <div id="planList" aria-live="polite"></div>
+          </div>
+          <div class="card">
+            <h2>Day by day</h2>
+            <div id="agenda"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">RKZ ركز · Your data stays private to this browser · No login needed</footer>
+  <script src="/app.js"></script>
+</body>
+</html>

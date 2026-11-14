@@ -1,0 +1,294 @@
+// RKZ frontend — Study Planner + AI Study Steps
+(function () {
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  let state = null;
+  let editingId = null;
+  let formSteps = []; // [{id?, title, minutes, source}]
+  let sampleIdx = 0;
+
+  // ---------- API ----------
+  async function api(method, url, body) {
+    const res = await fetch(url, {
+      method,
+      credentials: 'same-origin',
+      headers: body ? { 'Content-Type': 'application/json' } : {},
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    let data = {};
+    try { data = await res.json(); } catch (e) {}
+    if (!res.ok) throw new Error(data.error || 'Something went wrong. Please try again.');
+    return data;
+  }
+
+  // ---------- Dates ----------
+  const fmtDay = (iso) => new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+  const addDays = (iso, n) => { const d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+  const daysLeft = (iso) => Math.round((Date.parse(iso + 'T00:00:00Z') - Date.parse(state.today + 'T00:00:00Z')) / 86400000);
+  const mins = (m) => (m >= 60 ? `${Math.floor(m / 60)} h${m % 60 ? ' ' + (m % 60) + ' min' : ''}` : `${m} min`);
+
+  // ---------- Messages ----------
+  function say(text, kind) {
+    const el = $('formMsg');
+    el.className = 'msg' + (kind ? ' ' + kind : '');
+    el.textContent = text;
+  }
+
+  // ---------- Theme ----------
+  const themeIcon = () => { $('themeBtn').textContent = document.documentElement.getAttribute('data-theme') === 'dark' ? '☀️' : '🌙'; };
+  themeIcon();
+  $('themeBtn').addEventListener('click', () => {
+    const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    try { localStorage.setItem('rkz-theme', next); } catch (e) {}
+    themeIcon();
+  });
+
+  // ---------- Steps editor ----------
+  function renderSteps(animate) {
+    const list = $('stepsList');
+    list.innerHTML = '';
+    formSteps.forEach((s, i) => {
+      const li = document.createElement('li');
+      if (animate) { li.className = 'new'; li.style.animationDelay = (i * 60) + 'ms'; }
+      li.innerHTML =
+        `<span class="num">${i + 1}</span>` +
+        `<input type="text" maxlength="120" aria-label="Step ${i + 1} name" value="${esc(s.title)}" placeholder="What will you do?">` +
+        `<span class="min-wrap"><input type="number" min="5" max="600" step="5" inputmode="numeric" aria-label="Step ${i + 1} minutes" value="${esc(s.minutes)}"></span>` +
+        `<button type="button" class="del-step" aria-label="Remove step ${i + 1}" title="Remove">✕</button>`;
+      const [titleIn, minIn] = li.querySelectorAll('input');
+      titleIn.addEventListener('input', () => { s.title = titleIn.value; });
+      minIn.addEventListener('input', () => { s.minutes = minIn.value === '' ? '' : Number(minIn.value); updateTotal(); });
+      li.querySelector('.del-step').addEventListener('click', () => { formSteps.splice(i, 1); renderSteps(); });
+      if (s.source === 'ai') {
+        const tag = document.createElement('span');
+        tag.className = 'tag-ai'; tag.textContent = 'AI';
+        li.querySelector('.num').appendChild(document.createElement('br'));
+        li.querySelector('.num').appendChild(tag);
+      }
+      list.appendChild(li);
+    });
+    $('stepsEmpty').hidden = formSteps.length > 0;
+    updateTotal();
+  }
+
+  function updateTotal() {
+    const total = formSteps.reduce((t, s) => t + (Number(s.minutes) || 0), 0);
+    $('stepsTotal').textContent = formSteps.length ? `${formSteps.length} steps · ${mins(total)} total` : '';
+  }
+
+  $('addStep').addEventListener('click', () => {
+    formSteps.push({ title: '', minutes: 30, source: 'manual' });
+    renderSteps();
+    const inputs = $('stepsList').querySelectorAll('li:last-child input');
+    if (inputs[0]) inputs[0].focus();
+  });
+
+  // ---------- Sample (for judges) ----------
+  const SAMPLES = [
+    {
+      title: 'Biology Lab Report: Enzyme Activity', subject: 'Biology', days: 3,
+      description: 'Write a 1500-word lab report on how temperature affects enzyme activity. Needs introduction, method, results with two graphs, discussion and at least 5 references.',
+    },
+    {
+      title: 'Calculus II Midterm Prep', subject: 'Math', days: 5,
+      description: 'Midterm covers integration by parts, trig substitution, partial fractions and improper integrals. I am weakest at partial fractions.',
+    },
+  ];
+  $('sampleBtn').addEventListener('click', () => {
+    const s = SAMPLES[sampleIdx % SAMPLES.length]; sampleIdx++;
+    $('title').value = s.title; $('subject').value = s.subject;
+    $('description').value = s.description;
+    $('deadline').value = addDays(state.today, s.days);
+    formSteps = []; renderSteps();
+    say('Sample loaded. Now tap ✨ Suggest Study Steps.', 'ok');
+    $('aiBtn').focus();
+  });
+
+  // ---------- AI: Suggest Study Steps ----------
+  $('aiBtn').addEventListener('click', async () => {
+    const title = $('title').value.trim();
+    if (!title) { say('Add the assignment name first, then ask AI.', 'err'); $('title').focus(); return; }
+    const btn = $('aiBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span>Thinking…';
+    say('AI is reading your assignment…');
+    try {
+      const data = await api('POST', '/api/ai/suggest-steps', {
+        title, subject: $('subject').value.trim(), description: $('description').value.trim(), deadline: $('deadline').value || undefined,
+      });
+      formSteps = data.steps.map((s) => ({ title: s.title, minutes: s.minutes, source: 'ai' }));
+      renderSteps(true);
+      say(`AI suggested ${formSteps.length} steps. Edit anything you like, then tap Save Plan.`, 'ok');
+    } catch (e) {
+      say(e.message + ' You can type your own steps with “+ Add step”.', 'err');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '✨ Suggest Study Steps';
+    }
+  });
+
+  // ---------- Save plan ----------
+  function resetForm() {
+    editingId = null;
+    $('assignmentForm').reset();
+    formSteps = []; renderSteps();
+    $('formTitle').textContent = 'New assignment';
+    $('saveBtn').textContent = 'Save Plan';
+    $('cancelEdit').hidden = true;
+    $('deadline').min = state.today;
+  }
+
+  $('cancelEdit').addEventListener('click', () => { resetForm(); say(''); });
+
+  $('assignmentForm').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const payload = {
+      title: $('title').value.trim(),
+      subject: $('subject').value.trim(),
+      deadline: $('deadline').value,
+      description: $('description').value.trim(),
+      steps: formSteps.map((s) => ({ id: s.id, title: String(s.title || '').trim(), minutes: Number(s.minutes), source: s.source })),
+    };
+    // quick friendly checks (the server validates everything again)
+    if (!payload.title) return say('Add the assignment name.', 'err');
+    if (!payload.subject) return say('Add a subject (e.g. Math).', 'err');
+    if (!payload.deadline) return say('Pick a deadline.', 'err');
+    if (!payload.steps.length) return say('Add at least one study step, or tap ✨ Suggest Study Steps.', 'err');
+    if (payload.steps.some((s) => !s.title)) return say('Every step needs a name.', 'err');
+    if (payload.steps.some((s) => !Number.isInteger(s.minutes) || s.minutes < 5 || s.minutes > 600)) return say('Each step needs 5 to 600 minutes.', 'err');
+
+    const btn = $('saveBtn'); btn.disabled = true;
+    try {
+      const data = editingId ? await api('PUT', `/api/assignments/${editingId}`, payload) : await api('POST', '/api/assignments', payload);
+      state = data;
+      const wasEdit = Boolean(editingId);
+      resetForm();
+      renderAll(data.savedId);
+      const a = state.assignments.find((x) => x.id === data.savedId);
+      if (a && a.risk === 'red') say(`Plan ${wasEdit ? 'updated' : 'saved'}, but ${mins(a.unscheduledMinutes)} won’t fit before the deadline. See the red warning.`, 'err');
+      else say(`Plan ${wasEdit ? 'updated' : 'saved'}! Your steps are scheduled.`, 'ok');
+    } catch (e) {
+      say(e.message, 'err');
+    } finally { btn.disabled = false; }
+  });
+
+  // ---------- Daily study time ----------
+  $('saveDaily').addEventListener('click', async () => {
+    const n = Number($('dailyMinutes').value);
+    if (!Number.isInteger(n) || n < 10 || n > 720) { say('Study time must be 10 to 720 minutes per day.', 'err'); return; }
+    try {
+      state = await api('PUT', '/api/settings', { dailyMinutes: n });
+      renderAll();
+      say(`Updated to ${n} minutes per day. Your plan was rescheduled.`, 'ok');
+    } catch (e) { say(e.message, 'err'); }
+  });
+
+  // ---------- Plan rendering ----------
+  const RISK = {
+    green: () => '🟢 On track',
+    yellow: () => '🟡 Tight',
+    red: (a) => `🔴 ${mins(a.unscheduledMinutes)} won’t fit`,
+    overdue: () => '🔴 Deadline passed',
+    done: () => '✅ Done',
+  };
+
+  function renderPlan(flashId) {
+    const box = $('planList');
+    if (!state.assignments.length) {
+      box.innerHTML = '<p class="empty">No plans yet. Add an assignment, or tap <b>Load sample</b> to try it.</p>';
+      return;
+    }
+    box.innerHTML = state.assignments.map((a) => {
+      const dl = daysLeft(a.deadline);
+      const due = dl === 0 ? 'today' : dl === 1 ? 'tomorrow' : dl < 0 ? `${-dl} days ago` : `in ${dl} days`;
+      const steps = a.steps.map((s) => {
+        const sess = (s.sessions || []).map((x) => `<span class="sess">${esc(fmtDay(x.date))} · ${mins(x.minutes)}</span>`).join('');
+        const statusTxt = s.status === 'done' ? ' ✅' : '';
+        const warn = s.unscheduledMinutes > 0 ? `<div class="wont-fit">⚠ ${mins(s.unscheduledMinutes)} won’t fit before the deadline</div>` : '';
+        return `<li><div class="p-step-title">${esc(s.title)}${statusTxt}${s.source === 'ai' ? '<span class="tag-ai">AI</span>' : ''} <span class="muted">· ${mins(s.minutes)}</span></div>` +
+          (sess ? `<div class="sessions">${sess}</div>` : '') + warn + '</li>';
+      }).join('');
+      return `<article class="assignment${a.id === flashId ? ' flash' : ''}" id="a-${esc(a.id)}">
+        <div class="a-head">
+          <div>
+            <div class="a-title">${esc(a.title)}</div>
+            <div class="a-meta"><span class="chip">${esc(a.subject)}</span> Due ${esc(fmtDay(a.deadline))} (${due}) · ${mins(a.remainingMinutes)} left</div>
+          </div>
+          <span class="risk ${esc(a.risk)}">${(RISK[a.risk] || RISK.green)(a)}</span>
+        </div>
+        <ol class="p-steps">${steps}</ol>
+        <div class="a-actions">
+          <button class="btn ghost small" type="button" data-edit="${esc(a.id)}">Edit</button>
+          <button class="btn ghost small" type="button" data-del="${esc(a.id)}">Delete</button>
+        </div>
+      </article>`;
+    }).join('');
+    if (flashId) { const el = document.getElementById('a-' + flashId); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+  }
+
+  $('planList').addEventListener('click', async (ev) => {
+    const edit = ev.target.closest('[data-edit]');
+    const del = ev.target.closest('[data-del]');
+    if (edit) {
+      const a = state.assignments.find((x) => x.id === edit.dataset.edit);
+      if (!a) return;
+      editingId = a.id;
+      $('title').value = a.title; $('subject').value = a.subject; $('deadline').value = a.deadline; $('description').value = a.description;
+      $('deadline').min = a.deadline < state.today ? a.deadline : state.today;
+      formSteps = a.steps.map((s) => ({ id: s.id, title: s.title, minutes: s.minutes, source: s.source }));
+      renderSteps();
+      $('formTitle').textContent = 'Edit assignment';
+      $('saveBtn').textContent = 'Update Plan';
+      $('cancelEdit').hidden = false;
+      say('Editing — change anything, then tap Update Plan.');
+      $('assignmentForm').scrollIntoView({ behavior: 'smooth' });
+    }
+    if (del) {
+      if (del.dataset.confirm !== '1') { del.dataset.confirm = '1'; del.textContent = 'Tap again to delete'; del.classList.add('danger'); return; }
+      try {
+        state = await api('DELETE', `/api/assignments/${del.dataset.del}`);
+        if (editingId === del.dataset.del) resetForm();
+        renderAll(); say('Assignment deleted.', 'ok');
+      } catch (e) { say(e.message, 'err'); }
+    }
+  });
+
+  function renderAgenda() {
+    const box = $('agenda');
+    if (!state.agenda.length) { box.innerHTML = '<p class="empty">Your study days will show here.</p>'; return; }
+    const names = {};
+    for (const a of state.assignments) for (const s of a.steps) names[s.id] = { a, s };
+    box.innerHTML = state.agenda.map((d) => {
+      const used = d.items.reduce((t, i) => t + i.minutes, 0);
+      const items = d.items.map((i) => {
+        const n = names[i.stepId]; if (!n) return '';
+        return `<li><b>${esc(n.a.subject)}</b> · ${esc(n.s.title)} — ${mins(i.minutes)}</li>`;
+      }).join('');
+      return `<div class="day"><div class="day-head"><span>${esc(fmtDay(d.date))}${d.date === state.today ? '<span class="today-tag">Today</span>' : ''}</span>` +
+        `<span class="muted">${mins(used)} of ${mins(state.settings.dailyMinutes)}</span></div><ul>${items}</ul></div>`;
+    }).join('');
+  }
+
+  function renderAll(flashId) {
+    $('dailyMinutes').value = state.settings.dailyMinutes;
+    $('deadline').min = editingId ? $('deadline').min : state.today;
+    $('subjectList').innerHTML = state.channels.map((c) => `<option value="${esc(c.name)}"></option>`).join('');
+    renderPlan(flashId);
+    renderAgenda();
+  }
+
+  // ---------- Start ----------
+  (async function init() {
+    renderSteps();
+    try {
+      state = await api('GET', '/api/state');
+      renderAll();
+      $('deadline').min = state.today;
+    } catch (e) {
+      say('Could not load your plan. Check your connection and refresh. (' + e.message + ')', 'err');
+    }
+  })();
+})();
