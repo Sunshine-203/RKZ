@@ -240,8 +240,8 @@ function authLimit(req, res, next) {
   list.push(now); authHits.set(key, list); next();
 }
 function readCreds(body, { withName = false } = {}) {
-  const username = v.text(body.username, { field: 'Username', min: 3, max: 30 }).toLowerCase();
-  if (!/^[a-z0-9_.]+$/.test(username)) throw new v.ValidationError('Username can use letters, numbers, _ and . only.');
+  const username = v.text(body.username, { field: 'Email or username', min: 3, max: 80 }).toLowerCase();
+  if (!/^[a-z0-9_.+\-@]+$/.test(username)) throw new v.ValidationError('Use your email, or a username with letters, numbers, _ and . only.');
   if (typeof body.password !== 'string' || body.password.length < 6 || body.password.length > 100) throw new v.ValidationError('Password must be 6 to 100 characters.');
   const out = { username, password: body.password };
   if (withName) out.name = v.text(body.name, { field: 'Name', min: 1, max: 40 });

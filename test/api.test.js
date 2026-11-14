@@ -225,5 +225,9 @@ test('accounts: sign up keeps guest data, generic login error, logout gives a fr
   const b = client(); await b('GET', '/api/state');
   r = await b('POST', '/api/auth/register', { name: 'X', username: 'sunshine', password: 'another1' }); assert.strictEqual(r.status, 409);
   r = await b('POST', '/api/auth/register', { name: 'X', username: 'bad name!', password: 'another1' }); assert.strictEqual(r.status, 400);
+  const c2 = client(); await c2('GET', '/api/state');
+  r = await c2('POST', '/api/auth/register', { name: 'Aziz', username: 'Aziz123@gmail.com', password: 'secret123' }); assert.strictEqual(r.status, 201);
+  r = await c2('POST', '/api/auth/logout');
+  r = await c2('POST', '/api/auth/login', { username: 'aziz123@gmail.com', password: 'secret123' }); assert.strictEqual(r.status, 200); assert.strictEqual(r.body.profile.name, 'Aziz');
   const row = await pool.query("select password_hash from users where username='sunshine'"); assert.ok(!row.rows[0].password_hash.includes('secret123'));
 });

@@ -27,7 +27,7 @@
     if (mode === 'register') body.name = $('authName').value.trim();
     const msg = $('authMsg');
     if (mode === 'register' && !body.name) { msg.className = 'msg err'; msg.textContent = 'Add your name.'; return; }
-    if (!body.username || !body.password) { msg.className = 'msg err'; msg.textContent = 'Enter your username and password.'; return; }
+    if (!body.username || !body.password) { msg.className = 'msg err'; msg.textContent = 'Enter your email (or username) and password.'; return; }
     $('authSubmit').disabled = true;
     try {
       const s = await R().api('POST', mode === 'register' ? '/api/auth/register' : '/api/auth/login', body);
