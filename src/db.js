@@ -50,6 +50,25 @@ create table if not exists steps (
   unscheduled_minutes int not null default 0
 );
 create index if not exists steps_assignment on steps (assignment_id);
+
+create table if not exists sessions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references users(id) on delete cascade,
+  step_id uuid references steps(id) on delete set null,
+  assignment_id uuid references assignments(id) on delete set null,
+  channel_id uuid references channels(id) on delete set null,
+  step_title text not null default '',
+  scene text not null,
+  sound_on boolean not null,
+  planned_minutes int not null,
+  focused_seconds int not null default 0,
+  outcome text not null,
+  done_minutes int not null default 0,
+  note text not null default '',
+  reviewed boolean not null default false,
+  created_at timestamptz not null default now()
+);
+create index if not exists sessions_user on sessions (user_id, created_at desc);
 `;
 
 async function migrate() {

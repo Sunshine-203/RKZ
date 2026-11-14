@@ -12,7 +12,7 @@ const ai = require('../src/ai');
 
 let server, base;
 test.before(async () => {
-  await pool.query('drop table if exists steps, assignments, channels, users cascade');
+  await pool.query('drop table if exists sessions, steps, assignments, channels, users cascade');
   await migrate();
   server = app.listen(0); base = `http://127.0.0.1:${server.address().port}`;
 });
@@ -100,4 +100,51 @@ test('AI failure returns a friendly error and manual planning still works', asyn
   assert.match(r.body.error, /add steps manually/);
   r = await a('POST', '/api/assignments', { title: 'Essay', subject: 'English', deadline: inDays(2), steps: [{ title: 'Outline', minutes: 30 }] });
   assert.strictEqual(r.status, 201);
+});
+
+test('focus room: channels keep separate defaults, sessions save outcomes, isolation holds', async () => {
+  const a = client(); const b = client();
+  let r = await a('POST', '/api/demo/focus-sample');
+  assert.strictEqual(r.status, 200);
+  const math = r.body.channels.find((c) => c.name === 'Math');
+  const bio = r.body.channels.find((c) => c.name === 'Biology');
+  assert.deepStrictEqual([math.scene, math.soundOn, math.focusMinutes], ['plain', false, 50]);
+  assert.deepStrictEqual([bio.scene, bio.soundOn, bio.focusMinutes], ['rain', true, 25]);
+  // calling sample again does not duplicate tasks
+  r = await a('POST', '/api/demo/focus-sample');
+  assert.strictEqual(r.body.assignments.length, 2);
+
+  // edit Math defaults, Biology untouched, persists after refresh
+  r = await a('PUT', `/api/channels/${math.id}`, { scene: 'ocean', soundOn: true, focusMinutes: 40 });
+  assert.strictEqual(r.status, 200);
+  r = await a('GET', '/api/state');
+  const m2 = r.body.channels.find((c) => c.id === math.id), b2 = r.body.channels.find((c) => c.id === bio.id);
+  assert.deepStrictEqual([m2.scene, m2.soundOn, m2.focusMinutes], ['ocean', true, 40]);
+  assert.deepStrictEqual([b2.scene, b2.soundOn, b2.focusMinutes], ['rain', true, 25]);
+
+  // rename + duplicate name rejected + bad scene rejected
+  r = await a('PUT', `/api/channels/${math.id}`, { name: 'Calculus' }); assert.strictEqual(r.status, 200);
+  r = await a('PUT', `/api/channels/${math.id}`, { name: 'biology' }); assert.strictEqual(r.status, 409);
+  r = await a('PUT', `/api/channels/${math.id}`, { scene: 'disco' }); assert.strictEqual(r.status, 400);
+  r = await a('POST', '/api/channels', { name: 'Physics', scene: 'fireplace', soundOn: true, focusMinutes: 30 }); assert.strictEqual(r.status, 201);
+
+  // other browser can't edit my channel
+  await b('GET', '/api/state');
+  r = await b('PUT', `/api/channels/${bio.id}`, { scene: 'plain' }); assert.strictEqual(r.status, 404);
+
+  // partial session on a Biology step
+  const bioTask = r = (await a('GET', '/api/state')).body.assignments.find((x) => x.subject === 'Biology');
+  const step = bioTask.steps[0];
+  r = await a('POST', '/api/sessions', { stepId: step.id, outcome: 'partial', scene: 'rain', soundOn: true, plannedMinutes: 25, focusedSeconds: 600, doneMinutes: 10, note: 'Phone distracted me' });
+  assert.strictEqual(r.status, 201);
+  let s1 = r.body.assignments.find((x) => x.id === bioTask.id).steps[0];
+  assert.strictEqual(s1.status, 'partial'); assert.strictEqual(s1.doneMinutes, 10); assert.strictEqual(s1.remainingMinutes, 15);
+  assert.strictEqual(r.body.sessions[0].note, 'Phone distracted me');
+  // complete it
+  r = await a('POST', '/api/sessions', { stepId: step.id, outcome: 'complete', scene: 'rain', soundOn: true, plannedMinutes: 25, focusedSeconds: 900, doneMinutes: 15 });
+  s1 = r.body.assignments.find((x) => x.id === bioTask.id).steps[0];
+  assert.strictEqual(s1.status, 'done');
+  // invalid outcome / foreign step
+  r = await a('POST', '/api/sessions', { stepId: step.id, outcome: 'great', scene: 'rain', soundOn: true, plannedMinutes: 25 }); assert.strictEqual(r.status, 400);
+  r = await b('POST', '/api/sessions', { stepId: step.id, outcome: 'missed', scene: 'rain', soundOn: true, plannedMinutes: 25 }); assert.strictEqual(r.status, 404);
 });

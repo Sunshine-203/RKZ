@@ -47,4 +47,19 @@ function steps(v) {
   });
 }
 
-module.exports = { ValidationError, text, int, isoDate, uuid, steps, UUID_RE };
+const SCENES = ['plain', 'fireplace', 'ocean', 'rain'];
+function scene(v) {
+  if (!SCENES.includes(v)) throw new ValidationError('Background must be Plain, Fireplace, Ocean or Rain.');
+  return v;
+}
+function bool(v, { field }) {
+  if (typeof v !== 'boolean') throw new ValidationError(`${field} must be on or off.`);
+  return v;
+}
+const OUTCOMES = ['complete', 'partial', 'missed'];
+function outcome(v) {
+  if (!OUTCOMES.includes(v)) throw new ValidationError('Outcome must be complete, partial or missed.');
+  return v;
+}
+
+module.exports = { ValidationError, text, int, isoDate, uuid, steps, scene, bool, outcome, SCENES, UUID_RE };

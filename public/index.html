@@ -11,29 +11,60 @@
   <script src="/theme.js"></script>
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand">
-      <img src="/logo.png" alt="RKZ logo" width="44" height="44">
-      <div>
-        <h1>RKZ <span lang="ar" dir="rtl">ركز</span></h1>
-        <p class="slogan">When plans break, focus starts here.</p>
-      </div>
+<div class="app">
+  <aside class="sidebar">
+    <div class="side-brand">
+      <img src="/logo.png" alt="" width="34" height="34">
+      <span>RKZ <span class="ar" lang="ar" dir="rtl">ركز</span></span>
     </div>
-    <button id="themeBtn" class="icon-btn" type="button" aria-label="Switch light or dark mode" title="Light / Dark">🌙</button>
+    <nav class="side-nav" aria-label="Sections">
+      <button class="tab active" type="button" data-tab="dashboard">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg><span>Dashboard</span></button>
+      <button class="tab" type="button" data-tab="planner">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M8 14h2M14 14h2M8 17h2"/></svg><span>Study Planner</span></button>
+      <button class="tab" type="button" data-tab="focus">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9 2h6"/></svg><span>Focus Room</span></button>
+      <button id="themeBtn" class="tab theme-toggle" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></svg><span id="themeLabel">Dark mode</span></button>
+    </nav>
+    <p class="side-slogan">When plans break,<br>focus starts here.</p>
+  </aside>
+
+  <div class="main">
+  <header class="main-top">
+    <h1 id="pageTitle">Dashboard</h1>
+    <button id="openPlannerBtn" class="btn mist small" type="button">Open Study Planner</button>
   </header>
 
-  <nav class="tabs" aria-label="Sections">
-    <button class="tab active" type="button" data-tab="planner" aria-current="page">📅 Planner</button>
-  </nav>
-
   <main>
-    <section id="planner" class="view">
+    <section id="dashboard" class="view">
+      <div class="hero">
+        <h2 id="greeting">Good afternoon</h2>
+        <p>Here’s your study overview for today.</p>
+      </div>
+      <div class="stats">
+        <div class="stat"><b id="statDue">0</b><span>Due today</span></div>
+        <div class="stat"><b id="statOverdue">0</b><span>Overdue</span></div>
+        <div class="stat"><b id="statFocus">0 min</b><span>Focus this week</span></div>
+        <div class="stat"><b id="statDone">0</b><span>Tasks completed</span></div>
+      </div>
+      <div class="grid2">
+        <div class="card"><h2>Today’s tasks</h2><div id="dashToday" class="item-list"></div></div>
+        <div class="card"><h2>Upcoming deadlines</h2><div id="dashDeadlines" class="item-list"></div></div>
+      </div>
+      <div class="card">
+        <h2>Your subject channels</h2>
+        <div class="chip-row"><span id="dashChannels" class="chip-row"></span><button id="editChannelsBtn" class="btn mist small" type="button">Edit channels</button></div>
+      </div>
+    </section>
+
+    <section id="planner" class="view" hidden>
       <div class="card study-time">
-        <label for="dailyMinutes">I can study</label>
+        <label for="dailyMinutes">Daily study time: I can study</label>
         <input id="dailyMinutes" type="number" min="10" max="720" step="5" inputmode="numeric" aria-describedby="dailyHint">
         <span>minutes per day</span>
         <button id="saveDaily" class="btn secondary" type="button">Update</button>
-        <p id="dailyHint" class="hint">RKZ fits your study steps into this time, every day until each deadline.</p>
+        <p id="dailyHint" class="hint">Your study budget. RKZ fits steps into this many minutes each day until the deadline, and shows 🔴 if they won’t fit.</p>
       </div>
 
       <div class="grid">
@@ -91,9 +122,96 @@
         </div>
       </div>
     </section>
+
+    <section id="focus" class="view" hidden>
+      <div class="focus-grid">
+        <div class="focus-side">
+          <div class="card">
+            <div class="card-head">
+              <h2>Subject channels</h2>
+              <button id="focusSampleBtn" class="btn ghost small" type="button">Load sample</button>
+            </div>
+            <p class="hint">Each subject keeps its own background, sound and focus length.</p>
+            <div id="channelList" class="channel-list"></div>
+            <form id="newChannelForm" class="new-channel" novalidate>
+              <input id="newChannelName" type="text" maxlength="40" placeholder="New channel, e.g. Physics" aria-label="New channel name">
+              <button class="btn secondary small" type="submit">+ Add</button>
+            </form>
+            <p id="channelMsg" class="msg" role="status" aria-live="polite"></p>
+          </div>
+          <div class="card">
+            <h2>Tasks to focus on</h2>
+            <div id="taskList"></div>
+          </div>
+        </div>
+
+        <div id="room" class="room" data-scene="plain" aria-label="Focus room">
+          <div class="scene-layer" aria-hidden="true"><img class="plain-logo" src="/logo.png" alt=""></div>
+          <div class="room-inner">
+            <div class="room-top">
+              <div>
+                <span id="roomChannel" class="room-chip">No task open</span>
+                <div id="roomTask" class="room-task">Open a task to load its subject’s setup.</div>
+              </div>
+              <button id="fullBtn" class="room-icon" type="button" title="Full screen" aria-label="Full screen">⛶</button>
+            </div>
+
+            <div id="timer" class="timer" role="timer" aria-live="off">25:00</div>
+            <div id="timerState" class="timer-state">Ready</div>
+
+            <div class="room-controls">
+              <button id="startBtn" class="room-btn main" type="button" disabled>▶ Start</button>
+              <button id="endBtn" class="room-btn" type="button" disabled>■ End</button>
+              <button id="muteBtn" class="room-btn" type="button" aria-pressed="false" disabled>🔊 Sound on</button>
+            </div>
+
+            <div class="room-settings">
+              <div class="scene-picker" role="radiogroup" aria-label="Background">
+                <button type="button" data-scene="fireplace" role="radio">🔥 Fireplace</button>
+                <button type="button" data-scene="ocean" role="radio">🌊 Ocean</button>
+                <button type="button" data-scene="rain" role="radio">🌧 Rain</button>
+                <button type="button" data-scene="plain" role="radio">◻ Plain</button>
+              </div>
+              <div class="room-row">
+                <label>Focus <input id="roomMinutes" type="number" min="5" max="180" step="5" inputmode="numeric"> min</label>
+                <button id="saveDefaultsBtn" class="room-btn small" type="button" disabled>Save as channel default</button>
+              </div>
+              <p id="roomNote" class="room-note">Changes apply to this session only, unless you save them as the channel’s default.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="outcomeModal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="outcomeTitle">
+        <form id="outcomeForm" class="modal-card" novalidate>
+          <h2 id="outcomeTitle">How did it go?</h2>
+          <p id="outcomeTask" class="muted"></p>
+          <div class="outcome-pick" role="radiogroup" aria-label="Outcome">
+            <label><input type="radio" name="outcome" value="complete"> ✅ Complete</label>
+            <label><input type="radio" name="outcome" value="partial"> ◐ Partial</label>
+            <label><input type="radio" name="outcome" value="missed"> ✖ Missed</label>
+          </div>
+          <label class="field" id="doneWrap">Minutes done
+            <input id="doneMinutes" type="number" min="1" max="600" inputmode="numeric">
+          </label>
+          <label class="field">What got in the way? <span class="muted">(optional)</span>
+            <textarea id="outcomeNote" rows="2" maxlength="500" placeholder="e.g. Got distracted by my phone, only finished half the reading."></textarea>
+          </label>
+          <div class="actions">
+            <button class="btn primary" type="submit">Save outcome</button>
+            <button id="outcomeCancel" class="btn ghost" type="button">Back to timer</button>
+          </div>
+          <p id="outcomeMsg" class="msg" role="status" aria-live="polite"></p>
+        </form>
+      </div>
+    </section>
   </main>
 
-  <footer class="foot">RKZ ركز · Your data stays private to this browser · No login needed</footer>
+  <footer class="foot">RKZ ركز · When plans break, focus starts here.</footer>
+  </div>
+</div>
   <script src="/app.js"></script>
+  <script src="/sound.js"></script>
+  <script src="/focus.js"></script>
 </body>
 </html>

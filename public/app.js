@@ -37,7 +37,13 @@
   }
 
   // ---------- Theme ----------
-  const themeIcon = () => { $('themeBtn').textContent = document.documentElement.getAttribute('data-theme') === 'dark' ? '☀️' : '🌙'; };
+  const themeIcon = () => {
+    const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+    $('themeLabel').textContent = dark ? 'Light mode' : 'Dark mode';
+    $('themeBtn').querySelector('svg').innerHTML = dark
+      ? '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'
+      : '<path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/>';
+  };
   themeIcon();
   $('themeBtn').addEventListener('click', () => {
     const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
@@ -98,6 +104,7 @@
     },
   ];
   $('sampleBtn').addEventListener('click', () => {
+    if (editingId) resetForm(); // never overwrite the assignment being edited
     const s = SAMPLES[sampleIdx % SAMPLES.length]; sampleIdx++;
     $('title').value = s.title; $('subject').value = s.subject;
     $('description').value = s.description;
@@ -206,7 +213,9 @@
       const due = dl === 0 ? 'today' : dl === 1 ? 'tomorrow' : dl < 0 ? `${-dl} days ago` : `in ${dl} days`;
       const steps = a.steps.map((s) => {
         const sess = (s.sessions || []).map((x) => `<span class="sess">${esc(fmtDay(x.date))} · ${mins(x.minutes)}</span>`).join('');
-        const statusTxt = s.status === 'done' ? ' ✅' : '';
+        const statusTxt = s.status === 'done' ? ' ✅'
+          : s.status === 'partial' ? ` <span class="st partial">◐ ${mins(s.doneMinutes)} done</span>`
+          : s.status === 'missed' ? ' <span class="st missed">✖ missed</span>' : '';
         const warn = s.unscheduledMinutes > 0 ? `<div class="wont-fit">⚠ ${mins(s.unscheduledMinutes)} won’t fit before the deadline</div>` : '';
         return `<li><div class="p-step-title">${esc(s.title)}${statusTxt}${s.source === 'ai' ? '<span class="tag-ai">AI</span>' : ''} <span class="muted">· ${mins(s.minutes)}</span></div>` +
           (sess ? `<div class="sessions">${sess}</div>` : '') + warn + '</li>';
@@ -278,10 +287,80 @@
     $('subjectList').innerHTML = state.channels.map((c) => `<option value="${esc(c.name)}"></option>`).join('');
     renderPlan(flashId);
     renderAgenda();
+    renderDashboard();
+    if (window.RKZFocus) window.RKZFocus.render();
   }
+
+  // ---------- Dashboard ----------
+  const SCENE_NAME = { plain: 'Plain', fireplace: 'Fireplace', ocean: 'Ocean', rain: 'Rain' };
+  function renderDashboard() {
+    const h = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kuwait', hour: 'numeric', hour12: false }).format(new Date()));
+    $('greeting').textContent = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+    const open = state.assignments.filter((a) => a.risk !== 'done');
+    $('statDue').textContent = open.filter((a) => a.deadline === state.today).length;
+    $('statOverdue').textContent = open.filter((a) => a.deadline < state.today).length;
+    const weekAgo = Date.now() - 7 * 86400000;
+    const focusMin = Math.round(state.sessions.filter((s) => Date.parse(s.createdAt) >= weekAgo).reduce((t, s) => t + s.focusedSeconds, 0) / 60);
+    $('statFocus').textContent = mins(focusMin);
+    $('statDone').textContent = state.assignments.reduce((t, a) => t + a.steps.filter((s) => s.status === 'done').length, 0);
+
+    const names = {};
+    for (const a of state.assignments) for (const s of a.steps) names[s.id] = { a, s };
+    const todayItems = [];
+    for (const a of open.filter((x) => x.deadline < state.today)) {
+      for (const s of a.steps.filter((x) => x.status !== 'done')) todayItems.push({ title: s.title, meta: `${a.subject} · Overdue` });
+    }
+    const today = state.agenda.find((d) => d.date === state.today);
+    for (const i of (today ? today.items : [])) {
+      const n = names[i.stepId]; if (!n) continue;
+      todayItems.push({ title: n.s.title, meta: `${n.a.subject} · ${n.a.deadline === state.today ? 'Due today' : mins(i.minutes)}` });
+    }
+    $('dashToday').innerHTML = todayItems.length
+      ? todayItems.slice(0, 5).map((t) => `<div class="item"><b>${esc(t.title)}</b><span>${esc(t.meta)}</span></div>`).join('')
+      : '<p class="empty">Nothing planned for today. Add an assignment in the Study Planner.</p>';
+
+    const upcoming = open.filter((a) => a.deadline >= state.today).slice(0, 4);
+    $('dashDeadlines').innerHTML = upcoming.length
+      ? upcoming.map((a) => `<div class="item"><b>${esc(a.title)}</b><span>${esc(fmtDay(a.deadline))} · ${esc(a.subject)}</span></div>`).join('')
+      : '<p class="empty">No upcoming deadlines.</p>';
+
+    $('dashChannels').innerHTML = state.channels.length
+      ? state.channels.map((c) => `<span class="pill">${esc(c.name)} · ${SCENE_NAME[c.scene]} · ${c.focusMinutes} min</span>`).join('')
+      : '<span class="muted">No channels yet.</span>';
+  }
+  $('openPlannerBtn').addEventListener('click', () => showTab('planner'));
+  $('editChannelsBtn').addEventListener('click', () => showTab('focus'));
+
+  // ---------- Tabs (deep-linkable: /#dashboard, /#planner, /#focus) ----------
+  const TITLES = { dashboard: 'Dashboard', planner: 'Study Planner', focus: 'Focus Room', review: 'Progress Review' };
+  function showTab(name) {
+    const tabs = document.querySelectorAll('.tab[data-tab]');
+    if (![...tabs].some((t) => t.dataset.tab === name)) name = 'dashboard';
+    $('pageTitle').textContent = TITLES[name] || '';
+    $('openPlannerBtn').hidden = name !== 'dashboard';
+    window.scrollTo(0, 0);
+    tabs.forEach((t) => {
+      const on = t.dataset.tab === name;
+      t.classList.toggle('active', on);
+      if (on) t.setAttribute('aria-current', 'page'); else t.removeAttribute('aria-current');
+    });
+    document.querySelectorAll('.view').forEach((v) => { v.hidden = v.id !== name; });
+    if (location.hash !== '#' + name) history.replaceState(null, '', '#' + name);
+  }
+  document.querySelectorAll('.tab[data-tab]').forEach((t) => t.addEventListener('click', () => showTab(t.dataset.tab)));
+  window.addEventListener('hashchange', () => showTab(location.hash.slice(1)));
+
+  // Shared helpers for the other screens
+  window.RKZ = {
+    api, esc, mins, fmtDay,
+    get state() { return state; },
+    setState(s) { state = s; renderAll(); },
+    showTab,
+  };
 
   // ---------- Start ----------
   (async function init() {
+    showTab(location.hash.slice(1) || 'dashboard');
     renderSteps();
     try {
       state = await api('GET', '/api/state');
