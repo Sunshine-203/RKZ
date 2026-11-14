@@ -216,18 +216,18 @@ test('missed session with no progress is replaced by recovery steps (manual, no 
 test('accounts: sign up keeps guest data, generic login error, logout gives a fresh guest', async () => {
   const a = client();
   await a('POST', '/api/assignments', { title: 'Keep me', subject: 'Art', deadline: inDays(2), steps: [{ title: 'Sketch', minutes: 20 }] });
-  let r = await a('POST', '/api/auth/register', { name: 'Shurouq', username: 'sunshine', password: 'secret123' });
+  let r = await a('POST', '/api/auth/register', { name: 'Shurouq', username: 'sunshine@rkz.app', password: 'secret123' });
   assert.strictEqual(r.status, 201); assert.strictEqual(r.body.profile.name, 'Shurouq'); assert.strictEqual(r.body.assignments.length, 1);
   r = await a('POST', '/api/auth/logout'); assert.strictEqual(r.body.profile.guest, true); assert.strictEqual(r.body.assignments.length, 0);
-  r = await a('POST', '/api/auth/login', { username: 'sunshine', password: 'wrongpass' }); assert.strictEqual(r.status, 401); assert.strictEqual(r.body.error, 'Incorrect username or password.');
-  r = await a('POST', '/api/auth/login', { username: 'nobody', password: 'whatever1' }); assert.strictEqual(r.body.error, 'Incorrect username or password.');
-  r = await a('POST', '/api/auth/login', { username: 'SUNSHINE', password: 'secret123' }); assert.strictEqual(r.status, 200); assert.strictEqual(r.body.assignments[0].title, 'Keep me');
+  r = await a('POST', '/api/auth/login', { username: 'sunshine@rkz.app', password: 'wrongpass' }); assert.strictEqual(r.status, 401); assert.strictEqual(r.body.error, 'Incorrect email or password.');
+  r = await a('POST', '/api/auth/login', { username: 'nobody@rkz.app', password: 'whatever1' }); assert.strictEqual(r.body.error, 'Incorrect email or password.');
+  r = await a('POST', '/api/auth/login', { username: 'SUNSHINE@RKZ.APP', password: 'secret123' }); assert.strictEqual(r.status, 200); assert.strictEqual(r.body.assignments[0].title, 'Keep me');
   const b = client(); await b('GET', '/api/state');
-  r = await b('POST', '/api/auth/register', { name: 'X', username: 'sunshine', password: 'another1' }); assert.strictEqual(r.status, 409);
+  r = await b('POST', '/api/auth/register', { name: 'X', username: 'sunshine@rkz.app', password: 'another1' }); assert.strictEqual(r.status, 409);
   r = await b('POST', '/api/auth/register', { name: 'X', username: 'bad name!', password: 'another1' }); assert.strictEqual(r.status, 400);
   const c2 = client(); await c2('GET', '/api/state');
   r = await c2('POST', '/api/auth/register', { name: 'Aziz', username: 'Aziz123@gmail.com', password: 'secret123' }); assert.strictEqual(r.status, 201);
   r = await c2('POST', '/api/auth/logout');
   r = await c2('POST', '/api/auth/login', { username: 'aziz123@gmail.com', password: 'secret123' }); assert.strictEqual(r.status, 200); assert.strictEqual(r.body.profile.name, 'Aziz');
-  const row = await pool.query("select password_hash from users where username='sunshine'"); assert.ok(!row.rows[0].password_hash.includes('secret123'));
+  const row = await pool.query("select password_hash from users where username='sunshine@rkz.app'"); assert.ok(!row.rows[0].password_hash.includes('secret123'));
 });

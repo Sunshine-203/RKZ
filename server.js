@@ -240,8 +240,8 @@ function authLimit(req, res, next) {
   list.push(now); authHits.set(key, list); next();
 }
 function readCreds(body, { withName = false } = {}) {
-  const username = v.text(body.username, { field: 'Email or username', min: 3, max: 80 }).toLowerCase();
-  if (!/^[a-z0-9_.+\-@]+$/.test(username)) throw new v.ValidationError('Use your email, or a username with letters, numbers, _ and . only.');
+  const username = v.text(body.username, { field: 'Email', min: 5, max: 120 }).toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(username)) throw new v.ValidationError('Enter a valid email, e.g. name@gmail.com.');
   if (typeof body.password !== 'string' || body.password.length < 6 || body.password.length > 100) throw new v.ValidationError('Password must be 6 to 100 characters.');
   const out = { username, password: body.password };
   if (withName) out.name = v.text(body.name, { field: 'Name', min: 1, max: 40 });
@@ -264,10 +264,10 @@ app.post('/api/auth/register', authLimit, wrap(async (req, res) => {
 
 app.post('/api/auth/login', authLimit, wrap(async (req, res) => {
   let c;
-  try { c = readCreds(req.body); } catch { return res.status(401).json({ error: 'Incorrect username or password.' }); }
+  try { c = readCreds(req.body); } catch { return res.status(401).json({ error: 'Incorrect email or password.' }); }
   const r = await pool.query('select id, password_hash from users where lower(username)=lower($1)', [c.username]);
   const okPw = r.rows[0] ? await checkPassword(c.password, r.rows[0].password_hash) : (await hashPassword(c.password), false);
-  if (!okPw) return res.status(401).json({ error: 'Incorrect username or password.' });
+  if (!okPw) return res.status(401).json({ error: 'Incorrect email or password.' });
   setUidCookie(req, res, r.rows[0].id);
   res.json(await buildState(r.rows[0].id));
 }));
